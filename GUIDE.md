@@ -88,8 +88,16 @@ git commit -m "ex. Merge origin/main vào <your_branch"
 ```bash
 git push origin <your_branch>
 ```
-
-
+## Hướng dẫn quay lại commit cũ
+xem hash code ở commit cũ:
+```bash
+git log --oneline
+```
+branch quay về commit cũ:
+```bash
+git reset --hard <hash_code>
+```
+> Thay <hash_code> bằng hash code của commit muốn quay về
 
 # Cài đặt sử dụng docker
 ## 1. Kiểm tra Docker đã có chưa
