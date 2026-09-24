@@ -125,10 +125,10 @@ sudo systemctl start docker
 sudo systemctl enable docker
 ```
 
-## 2. Lấy image ROS 2 Jazzy
+## 2. Lấy image 
 
 ```bash
-docker pull ros:jazzy
+docker pull [Tên_image]:[tag]
 ```
 
 Nếu báo lỗi `permission denied`, thêm user vào group docker:
@@ -143,28 +143,19 @@ Sau khi pull về xong kiểm tra:
 docker images
 ```
 
-Kết quả phải có:
+Ví dụ kết quả:
 ```bash
 IMAGE       ID              DISK USAGE  CONTENT SIZE    EXTRA
 ros:jazzy   c3706ef0a0aa    1.32GB      321MB
 ```
 
-## 3. Chạy container ROS 2 Jazzy
+## 3. Chạy container
 
 Khởi chạy container:
 ```bash
 docker run -it --name <container_name> <image>
 ```
 
-Khi vào được container, kiểm tra ros2 distro:
-```bash
-printenv ROS_DISTRO
-```
-
-Kết quả:
-```bash
-jazzy
-```
 ## 4. Thoát container
 
 Để thoát container:
@@ -179,7 +170,7 @@ Container sẽ dừng nhưng không bị xóa.
 ```bash
 docker ps -a
 ```
-Kết quả:
+Ví dụ kết quả:
 ```bash
 33ff68fac52c    ros:jazzy   "/ros_entrypoint.sh …"  4 minutes ago   Exited (0) About a minute ago ros2_jazzy 
 ```
@@ -219,14 +210,12 @@ docker exec -it <container_name> bash
 
 Thay vì mỗi lần tạo container lại cài package, bạn tạo một Dockerfile.
 
-Tạo thư mục chứa dockerfile:
+Tạo Dockerfile:
 ```bash
-mkdir -p ~/docker/ros2_jazzy
-cd ~/docker/ros2_jazzy
-nano Dockerfile
+touch Dockerfile
 ```
 
-Nội dung Dockerfile:
+Ví dụ nội dung Dockerfile:
 ```bash
 FROM ros:jazzy
 
