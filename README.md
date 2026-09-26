@@ -1,37 +1,59 @@
-# NRF52840 Classroom Quiz Server Starter
 
-Kiến trúc prototype:
+# ClassPulse BLE — NRF52840 Classroom Quiz Server V2
 
-Teacher Browser -> FastAPI -> MariaDB
-
-NRF52840 remotes (sau này) -> BLE Gateway chạy trên host Linux -> POST /api/answer -> Web Server
-
-Hiện tại dùng `/simulate` để giả lập remote.
+## Thành phần
+- FastAPI + Jinja2
+- MariaDB
+- Docker Compose
+- Upload roster CSV
+- Upload question bank `.txt` / `.docx`
+- Tạo session kiểm tra
+- Live teacher dashboard
+- Mapping prototype: `Remote No = STT`
+- Remote simulator A/B/C/D
+- Export kết quả CSV
 
 ## Chạy
 ```bash
+docker compose down
 docker compose up --build
 ```
 
 Mở:
-- http://localhost:8000/
-- http://localhost:8000/simulate
+- Teacher dashboard: http://localhost:8000/
+- Remote simulator: http://localhost:8000/simulate
 
-## Cú pháp câu hỏi
+## Flow test
+1. Upload `sample/roster.csv`.
+2. Upload `sample/questions.txt`.
+3. Tạo session.
+4. Mở session.
+5. Bấm **Mở câu**.
+6. Mở `/simulate`.
+7. Nhập đúng Session ID / Remote No / Question No.
+8. Bấm A/B/C/D.
+9. Teacher dashboard cập nhật sau khoảng 1 giây.
+10. Bấm **Xuất CSV** để tải kết quả.
+
+## Cú pháp question file
 ```text
 ?1 Nội dung câu hỏi
-A. Đáp án A
-B. Đáp án B
-C. Đáp án C
-D. Đáp án D
+A. Phương án A
+B. Phương án B
+C. Phương án C
+D. Phương án D
 ANS: B
 ```
 
-## Danh sách lớp
-CSV:
+## Kiến trúc tích hợp BLE sau này
 ```text
-stt,mssv,ho_ten
-1,23134064,Vũ Phạm Đức Văn
+NRF52840 Remote
+    ↓ BLE Advertising
+Linux BLE Gateway (BlueZ + Python Bleak)
+    ↓ HTTP POST /api/answer
+Docker Web API
+    ↓
+MariaDB
+    ↓
+Teacher Dashboard
 ```
-
-Prototype gán remote_no = STT.

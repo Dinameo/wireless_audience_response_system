@@ -1,33 +1,260 @@
+
 <!doctype html>
-<html lang="vi"><head><meta charset="utf-8"><title>{{ session.name }}</title>
-<style>body{font-family:Arial;max-width:1200px;margin:30px auto}.q{border:1px solid #ccc;border-radius:10px;padding:15px;margin:12px 0}button{padding:8px 12px}table{border-collapse:collapse;width:100%;margin-top:15px}th,td{border:1px solid #ddd;padding:7px}.counts{font-size:22px;margin:16px 0}</style></head>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ session.name }} · ClassPulse BLE</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
 <body>
-<h1>{{ session.name }}</h1><p>Session ID: <b>{{ session.id }}</b></p>
-{% for q in questions %}
-<div class="q"><h3>?{{ q.number }} {{ q.text }}</h3>
-<p>A. {{ q.option_a }}</p><p>B. {{ q.option_b }}</p><p>C. {{ q.option_c }}</p><p>D. {{ q.option_d }}</p>
-<button onclick="openQuestion({{ q.number }})">Mở câu {{ q.number }}</button></div>
-{% endfor %}
-<hr><h2>Live answers</h2><div id="current">Chưa mở câu hỏi.</div><div class="counts" id="counts"></div>
-<table><thead><tr><th>STT</th><th>MSSV</th><th>Họ tên</th><th>Remote</th><th>Đáp án</th><th>Đúng?</th></tr></thead><tbody id="rows"></tbody></table>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">CP</div>
+      <div class="brand-text"><strong>ClassPulse BLE</strong><span>Live Session</span></div>
+    </div>
+    <nav class="nav">
+      <a href="/"><span class="nav-icon">←</span> Quay lại tổng quan</a>
+      <a class="active" href="#"><span class="nav-icon">●</span> Live dashboard</a>
+      <a href="/simulate"><span class="nav-icon">⌨</span> Giả lập remote</a>
+      <a href="/session/{{ session.id }}/export.csv"><span class="nav-icon">⇩</span> Xuất CSV</a>
+    </nav>
+    <div class="sidebar-note">
+      <b>Session #{{ session.id }}</b><br>
+      {{ session.name }}
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <h1>{{ session.name }}</h1>
+        <div class="sub">Session ID #{{ session.id }} · {{ student_count }} học sinh · {{ questions|length }} câu hỏi</div>
+      </div>
+      <div id="statusBadge" class="badge {% if session.status == 'running' %}success{% endif %}">
+        ● {{ session.status }}
+      </div>
+    </header>
+
+    <div class="content">
+      <div class="session-layout">
+
+        <section class="card">
+          <div class="card-header">
+            <div><h3>Danh sách câu hỏi</h3><p>Chọn một câu để bắt đầu nhận đáp án.</p></div>
+          </div>
+          <div class="card-body">
+            <div class="question-list">
+              {% for q in questions %}
+              <div class="question-card" id="qcard-{{ q.number }}">
+                <h4>?{{ q.number }} {{ q.text }}</h4>
+                <div class="option-line">A. {{ q.option_a }}</div>
+                <div class="option-line">B. {{ q.option_b }}</div>
+                <div class="option-line">C. {{ q.option_c }}</div>
+                <div class="option-line">D. {{ q.option_d }}</div>
+                <div class="question-actions">
+                  <button class="btn btn-primary btn-sm" onclick="openQuestion({{ q.number }})">Mở câu</button>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+
+        <div>
+          <section class="card">
+            <div class="card-header">
+              <div>
+                <h3>Live Question</h3>
+                <p id="liveSub">Chưa có câu hỏi nào đang mở.</p>
+              </div>
+              <div style="display:flex;gap:8px">
+                <button class="btn btn-outline btn-sm" onclick="closeQuestion()">Khóa câu</button>
+                <a class="btn btn-soft btn-sm" target="_blank" href="/simulate">Mở remote giả lập</a>
+              </div>
+            </div>
+
+            <div class="card-body">
+              <div id="noQuestion" class="empty">
+                Chọn <b>Mở câu</b> ở danh sách bên trái để bắt đầu nhận đáp án.
+              </div>
+
+              <div id="livePanel" style="display:none">
+                <div class="live-head">
+                  <div style="flex:1">
+                    <div class="badge" id="liveNumber">Câu ?</div>
+                    <h2 class="live-question" id="liveText"></h2>
+                  </div>
+                  <div class="badge success" id="answerKeyBadge">Đáp án đúng: —</div>
+                </div>
+
+                <div class="answer-grid" id="answerGrid"></div>
+
+                <div class="count-grid">
+                  <div class="count-card"><span>Đã trả lời</span><b id="answeredCount">0</b><div class="progress"><i id="answeredBar"></i></div></div>
+                  <div class="count-card"><span>Chọn A</span><b id="countA">0</b></div>
+                  <div class="count-card"><span>Chọn B</span><b id="countB">0</b></div>
+                  <div class="count-card"><span>Chọn C</span><b id="countC">0</b></div>
+                  <div class="count-card"><span>Chọn D</span><b id="countD">0</b></div>
+                  <div class="count-card"><span>Đúng</span><b id="correctCount">0</b></div>
+                  <div class="count-card"><span>Sai</span><b id="wrongCount">0</b></div>
+                  <div class="count-card"><span>Chưa trả lời</span><b id="missingCount">{{ student_count }}</b></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card" style="margin-top:18px">
+            <div class="card-header">
+              <div><h3>Phản hồi học sinh</h3><p>Cập nhật tự động mỗi 1 giây.</p></div>
+              <span class="badge" id="responseBadge">0 / {{ student_count }}</span>
+            </div>
+            <div class="card-body">
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>STT</th><th>MSSV</th><th>Họ tên</th><th>Remote</th><th>Đáp án</th><th>Kết quả</th>
+                    </tr>
+                  </thead>
+                  <tbody id="rows">
+                    <tr><td colspan="6" style="text-align:center;color:#6b7280">Chưa có phản hồi.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="toast" class="toast"></div>
+
 <script>
-let currentQuestion=null; const sessionId={{ session.id }};
-async function openQuestion(q){
- const r=await fetch(`/api/session/${sessionId}/question/${q}/open`,{method:"POST"});
- if(!r.ok){alert(await r.text());return}
- currentQuestion=q; document.getElementById("current").textContent=`Đang mở câu ${q}`; await refreshAnswers();
+const sessionId = {{ session.id }};
+const totalStudents = {{ student_count }};
+const questions = {
+{% for q in questions %}
+  {{ q.number }}: {
+    number: {{ q.number }},
+    text: {{ q.text|tojson }},
+    A: {{ q.option_a|tojson }},
+    B: {{ q.option_b|tojson }},
+    C: {{ q.option_c|tojson }},
+    D: {{ q.option_d|tojson }},
+    correct: {{ q.correct_option|tojson }}
+  }{% if not loop.last %},{% endif %}
+{% endfor %}
+};
+
+let currentQuestion = {{ session.current_question_number if session.current_question_number else "null" }};
+
+function showToast(message){
+  const t=document.getElementById("toast");
+  t.textContent=message;
+  t.classList.add("show");
+  setTimeout(()=>t.classList.remove("show"),1800);
 }
+
+function renderQuestion(qn){
+  const q=questions[qn];
+  document.querySelectorAll(".question-card").forEach(x=>x.classList.remove("active"));
+  const card=document.getElementById(`qcard-${qn}`); if(card) card.classList.add("active");
+
+  if(!q){
+    document.getElementById("noQuestion").style.display="block";
+    document.getElementById("livePanel").style.display="none";
+    return;
+  }
+
+  document.getElementById("noQuestion").style.display="none";
+  document.getElementById("livePanel").style.display="block";
+  document.getElementById("liveNumber").textContent=`Câu ${qn}`;
+  document.getElementById("liveText").textContent=q.text;
+  document.getElementById("answerKeyBadge").textContent=`Đáp án đúng: ${q.correct}`;
+  document.getElementById("liveSub").textContent=`Đang nhận phản hồi cho câu ${qn}`;
+
+  const grid=document.getElementById("answerGrid");
+  grid.innerHTML="";
+  ["A","B","C","D"].forEach(k=>{
+    const div=document.createElement("div");
+    div.className="answer-box"+(q.correct===k?" correct":"");
+    div.innerHTML=`<strong>${k}</strong>${q[k]}`;
+    grid.appendChild(div);
+  });
+}
+
+async function openQuestion(qn){
+  const r=await fetch(`/api/session/${sessionId}/question/${qn}/open`,{method:"POST"});
+  if(!r.ok){showToast("Không mở được câu hỏi");return;}
+  currentQuestion=qn;
+  renderQuestion(qn);
+  document.getElementById("statusBadge").className="badge success";
+  document.getElementById("statusBadge").textContent="● running";
+  await refreshAnswers();
+  showToast(`Đã mở câu ${qn}`);
+}
+
+async function closeQuestion(){
+  const r=await fetch(`/api/session/${sessionId}/close`,{method:"POST"});
+  if(!r.ok){showToast("Không khóa được câu");return;}
+  currentQuestion=null;
+  renderQuestion(null);
+  document.getElementById("statusBadge").className="badge";
+  document.getElementById("statusBadge").textContent="● paused";
+  showToast("Đã khóa câu hỏi");
+}
+
 async function refreshAnswers(){
- if(currentQuestion===null)return;
- const r=await fetch(`/api/session/${sessionId}/answers/${currentQuestion}`); if(!r.ok)return;
- const d=await r.json();
- document.getElementById("counts").textContent=`A=${d.counts.A} | B=${d.counts.B} | C=${d.counts.C} | D=${d.counts.D}`;
- const tbody=document.getElementById("rows"); tbody.innerHTML="";
- for(const s of d.students){
-  const tr=document.createElement("tr");
-  tr.innerHTML=`<td>${s.stt}</td><td>${s.mssv}</td><td>${s.ho_ten}</td><td>${s.remote_no}</td><td>${s.answer}</td><td>${s.correct?"✓":"✗"}</td>`;
-  tbody.appendChild(tr);
- }
+  if(currentQuestion===null)return;
+  const r=await fetch(`/api/session/${sessionId}/answers/${currentQuestion}`);
+  if(!r.ok)return;
+  const d=await r.json();
+
+  const answered=d.students.length;
+  const correct=d.students.filter(x=>x.correct).length;
+  const wrong=answered-correct;
+  const missing=Math.max(0,totalStudents-answered);
+
+  document.getElementById("countA").textContent=d.counts.A;
+  document.getElementById("countB").textContent=d.counts.B;
+  document.getElementById("countC").textContent=d.counts.C;
+  document.getElementById("countD").textContent=d.counts.D;
+  document.getElementById("answeredCount").textContent=answered;
+  document.getElementById("correctCount").textContent=correct;
+  document.getElementById("wrongCount").textContent=wrong;
+  document.getElementById("missingCount").textContent=missing;
+  document.getElementById("responseBadge").textContent=`${answered} / ${totalStudents}`;
+  document.getElementById("answeredBar").style.width=(totalStudents?Math.min(100,answered/totalStudents*100):0)+"%";
+
+  const tbody=document.getElementById("rows");
+  tbody.innerHTML="";
+  if(!d.students.length){
+    tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:#6b7280">Chưa có phản hồi.</td></tr>';
+    return;
+  }
+
+  for(const s of d.students){
+    const tr=document.createElement("tr");
+    tr.innerHTML=`
+      <td>${s.stt}</td>
+      <td>${s.mssv}</td>
+      <td><b>${s.ho_ten}</b></td>
+      <td>Remote ${s.remote_no}</td>
+      <td><span class="badge">${s.answer}</span></td>
+      <td>${s.correct?'<span class="badge success">✓ Đúng</span>':'<span class="badge warning">✕ Sai</span>'}</td>
+    `;
+    tbody.appendChild(tr);
+  }
 }
+
+renderQuestion(currentQuestion);
+if(currentQuestion!==null) refreshAnswers();
 setInterval(refreshAnswers,1000);
-</script></body></html>
+</script>
+</body>
+</html>

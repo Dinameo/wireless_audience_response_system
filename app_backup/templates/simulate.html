@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><title>Giả lập remote</title>
+<style>body{font-family:Arial;max-width:600px;margin:40px auto}input,button{padding:10px;margin:5px}button{width:70px;height:50px;font-size:20px}</style></head>
+<body><h1>Giả lập remote A/B/C/D</h1><p>Dùng trước khi có firmware BLE.</p>
+<label>Session ID <input id="session" type="number" value="1"></label><br>
+<label>Remote No <input id="remote" type="number" value="1"></label><br>
+<label>Question No <input id="question" type="number" value="1"></label><br>
+<div><button onclick="sendAnswer('A')">A</button><button onclick="sendAnswer('B')">B</button><button onclick="sendAnswer('C')">C</button><button onclick="sendAnswer('D')">D</button></div>
+<pre id="out"></pre>
+<script>
+let seq=0;
+async function sendAnswer(option){
+ seq++;
+ const body={session_id:Number(session.value),remote_no:Number(remote.value),question_number:Number(question.value),option,seq_no:seq};
+ const r=await fetch("/api/answer",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+ out.textContent=`${r.status}\n${await r.text()}`;
+}
+</script></body></html>

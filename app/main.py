@@ -2,8 +2,9 @@ import csv
 import io
 from collections import Counter
 from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import select, delete
 
@@ -13,6 +14,7 @@ from .parser import parse_question_file
 
 app = FastAPI(title="NRF52840 Classroom Quiz Server")
 templates = Jinja2Templates(directory="app/templates")
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 Base.metadata.create_all(bind=engine)
 
 class AnswerIn(BaseModel):
@@ -45,6 +47,10 @@ async def upload_roster(file: UploadFile = File(...)):
         raise HTTPException(400, "CSV phải có cột: stt,mssv,ho_ten")
 
     with db_session() as db:
+        # Prototype policy: replacing the roster clears old remote assignments/answers
+        # so foreign-key references do not point at deleted students.
+        db.execute(delete(Answer))
+        db.execute(delete(Assignment))
         db.execute(delete(Student))
         db.commit()
         for row in reader:
@@ -100,8 +106,12 @@ def session_page(request: Request, session_id: int):
         if not s:
             raise HTTPException(404, "Không tìm thấy session.")
         questions = db.scalars(select(Question).order_by(Question.number)).all()
+        student_count = len(db.scalars(select(Student.id)).all())
     return templates.TemplateResponse("session.html", {
-        "request": request, "session": s, "questions": questions
+        "request": request,
+        "session": s,
+        "questions": questions,
+        "student_count": student_count
     })
 
 @app.post("/api/session/{session_id}/question/{question_number}/open")
@@ -190,6 +200,48 @@ def get_answers(session_id: int, question_number: int):
         "counts": {x: counts.get(x, 0) for x in "ABCD"},
         "students": students,
     }
+
+
+@app.post("/api/session/{session_id}/close")
+def close_question(session_id: int):
+    with db_session() as db:
+        s = db.get(QuizSession, session_id)
+        if not s:
+            raise HTTPException(404, "Session không tồn tại.")
+        s.current_question_number = None
+        s.status = "paused"
+        db.commit()
+    return {"ok": True}
+
+@app.get("/session/{session_id}/export.csv")
+def export_session_csv(session_id: int):
+    with db_session() as db:
+        s = db.get(QuizSession, session_id)
+        if not s:
+            raise HTTPException(404, "Session không tồn tại.")
+
+        rows = db.execute(
+            select(Answer, Student)
+            .join(Student, Student.id == Answer.student_id)
+            .where(Answer.session_id == session_id)
+            .order_by(Answer.question_number, Student.stt)
+        ).all()
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["session_id","session_name","question_no","stt","mssv","ho_ten","remote_no","answer","received_at"])
+        for ans, st in rows:
+            writer.writerow([
+                session_id, s.name, ans.question_number,
+                st.stt, st.student_code, st.full_name,
+                ans.remote_no, ans.selected_option,
+                ans.received_at.isoformat(sep=" ", timespec="seconds")
+            ])
+
+        content = "\\ufeff" + output.getvalue()
+
+    headers = {"Content-Disposition": f'attachment; filename="session_{session_id}_answers.csv"'}
+    return StreamingResponse(iter([content]), media_type="text/csv; charset=utf-8", headers=headers)
 
 @app.get("/simulate", response_class=HTMLResponse)
 def simulate_page(request: Request):

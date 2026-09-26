@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><title>NRF52840 Quiz Server</title>
+<style>body{font-family:Arial;max-width:1100px;margin:30px auto}section{border:1px solid #ccc;border-radius:10px;padding:18px;margin:16px 0}input,button{padding:8px;margin:4px 0}</style></head>
+<body>
+<h1>NRF52840 Classroom Quiz Server</h1>
+
+<section><h2>1. Upload danh sách lớp CSV</h2>
+<p>Header: <code>stt,mssv,ho_ten</code></p>
+<form action="/upload-roster" method="post" enctype="multipart/form-data">
+<input type="file" name="file" accept=".csv" required><button>Upload roster</button>
+</form><p>Đã có {{ students|length }} học sinh.</p></section>
+
+<section><h2>2. Upload bộ câu hỏi</h2>
+<p>Cú pháp: <code>?1</code>, <code>A.</code> ... <code>D.</code>, <code>ANS: A</code></p>
+<form action="/upload-questions" method="post" enctype="multipart/form-data">
+<input type="file" name="file" accept=".txt,.docx" required><button>Upload questions</button>
+</form><p>Đã có {{ questions|length }} câu hỏi.</p></section>
+
+<section><h2>3. Tạo buổi kiểm tra</h2>
+<form action="/session/create" method="post">
+<input name="name" placeholder="VD: IoT Week 5 - lớp 01" required><button>Tạo session</button>
+</form><p>Prototype: <b>remote_no = STT</b>.</p></section>
+
+<section><h2>Sessions</h2><ul>
+{% for s in sessions %}<li><a href="/session/{{ s.id }}">#{{ s.id }} - {{ s.name }}</a></li>{% endfor %}
+</ul></section>
+<p><a href="/simulate">Giả lập remote A/B/C/D</a></p>
+</body></html>
