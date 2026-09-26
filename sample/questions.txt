@@ -1,0 +1,13 @@
+?1 BLE có bao nhiêu kênh RF trong cách phân chia cơ bản?
+A. 3 kênh
+B. 37 kênh
+C. 40 kênh
+D. 79 kênh
+ANS: C
+
+?2 Trong một TCP server, hàm nào đưa socket vào trạng thái chờ kết nối?
+A. bind()
+B. listen()
+C. recv()
+D. close()
+ANS: B

@@ -1,0 +1,32 @@
+services:
+  db:
+    image: mariadb:11.4
+    container_name: quiz_db
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: quiz_ble
+      MARIADB_USER: quiz
+      MARIADB_PASSWORD: quizpass
+      MARIADB_ROOT_PASSWORD: rootpass_change_me
+    volumes:
+      - quiz_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  web:
+    build: .
+    container_name: quiz_web
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: mysql+pymysql://quiz:quizpass@db:3306/quiz_ble?charset=utf8mb4
+    ports:
+      - "8000:8000"
+
+volumes:
+  quiz_db_data:
