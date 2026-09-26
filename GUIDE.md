@@ -33,7 +33,7 @@ git fetch origin <your_branch>
 ```
 Chuyển sang nhánh của bạn:
 ```bash
-git checkout -b huy origin/<your_branch>
+git checkout -b origin/<your_branch>
 ```
 > Thay <your_branch> bằng tên colabarator viết thường không dấu
 
