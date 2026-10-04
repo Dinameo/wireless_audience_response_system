@@ -1,1 +1,12 @@
 .vscode/
+# KiCad
+**/.history/
+**/_restore_backup_*/
+**/*.kicad_prl
+**/*.lck
+**/~*
+**/temp-freerouting.dsn
+
+# Python
+__pycache__/
+*.py[cod]
