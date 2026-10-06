@@ -1,1 +1,32 @@
 .vscode/
+
+# Local configuration and secrets
+**/.env
+**/.env.*
+!**/.env.example
+ble-classroom/esp32_wifi_exam/secrets.h
+ble-classroom/ble-classroom-gateway.service
+
+# Local databases, backups and generated exports
+ble-classroom/data/
+ble-classroom/backups/
+**/exports/
+*.sqlite3
+*.db
+*.log
+
+# Python and editor/build artifacts
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+*.py[cod]
+*.egg-info/
+.idea/
+*.swp
+*.uf2
+*.hex
+*.elf
+*.bin
+*.map
+**/build/
+**/dist/

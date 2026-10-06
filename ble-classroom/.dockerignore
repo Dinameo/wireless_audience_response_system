@@ -1,0 +1,10 @@
+data/
+__pycache__/
+*.pyc
+.env
+.venv/
+backups/
+*.log
+esp32_wifi_exam/secrets.h
+ble-classroom-gateway.service
+tests/

@@ -1,0 +1,15 @@
+[Unit]
+Description=NEXUS Classroom BLE gateway
+
+[Service]
+Type=simple
+# Replace /ABS/PATH/TO/ble-classroom with the absolute project directory.
+WorkingDirectory=/ABS/PATH/TO/ble-classroom
+EnvironmentFile=/ABS/PATH/TO/ble-classroom/.env
+ExecStart=/ABS/PATH/TO/ble-classroom/.venv/bin/python /ABS/PATH/TO/ble-classroom/ble_gateway.py --max-connections 8
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+
+[Install]
+WantedBy=default.target
