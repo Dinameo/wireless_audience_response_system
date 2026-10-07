@@ -6,6 +6,7 @@ COPY app.py ./
 COPY authentication.py ./
 COPY workspace.py ./
 COPY exam_api.py ./
+COPY radio_api.py ./
 COPY importers.py ./
 COPY migrate_sqlite_to_mysql.py ./
 COPY static ./static

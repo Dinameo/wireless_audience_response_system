@@ -1,0 +1,14 @@
+[Unit]
+Description=NEXUS Classroom host Wi-Fi/Bluetooth radio bridge
+After=default.target
+
+[Service]
+Type=simple
+# Replace /ABS/PATH/TO/ble-classroom with your local project directory.
+WorkingDirectory=/ABS/PATH/TO/ble-classroom
+ExecStart=/usr/bin/python3 /ABS/PATH/TO/ble-classroom/host_radio.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

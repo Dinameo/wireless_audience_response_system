@@ -9,8 +9,11 @@ function status(title,description){$('questionSlide').hidden=true;$('slideNaviga
 function renderControls(){
   const exam=data?.exam,questions=data?.questions||[],draft=exam?.status==='draft'&&questions.length>0,live=exam?.status==='open';
   const hasNext=live&&questions.some(question=>question.position>exam.current_position);
-  $('teacherControls').hidden=!draft&&!live;
+  const closed=exam?.status==='closed';
+  $('teacherControls').hidden=!draft&&!live&&!closed;
   $('startExamControl').hidden=!draft;$('advanceExamControl').hidden=!hasNext;$('finishExamControl').hidden=!live;
+  $('exportScoresControl').hidden=!closed;
+  if(closed){$('exportScoresControl').href='/api/exams/'+examId+'/scores.xlsx';$('exportScoresControl').download='bang_diem_bai_thi_'+examId+'.xlsx'}
   for(const id of ['startExamControl','advanceExamControl','finishExamControl'])$(id).disabled=controlBusy;
   $('finishExamControl').textContent=hasNext?'Kết thúc bài thi':'Kết thúc & chấm điểm';
 }

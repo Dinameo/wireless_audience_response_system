@@ -11,4 +11,4 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-Mở `http://localhost:8000`. Trước khi nạp ESP32, sao chép `esp32_wifi_exam/secrets.example.h` thành `esp32_wifi_exam/secrets.h`, rồi điền Wi-Fi, địa chỉ server và token thiết bị. `.env`, `secrets.h`, bản sao lưu, database cục bộ và môi trường Python được Git bỏ qua; không đưa thông tin sinh viên thật lên kho công khai.
+Mở `http://localhost:8000`. Trước khi nạp ESP32, điền Wi-Fi, địa chỉ server và token thiết bị ở đầu `esp32_wifi_exam/esp32_wifi_exam.ino`. Vì sketch là file được Git theo dõi, hãy thay lại các giá trị mẫu trước khi commit/push; `.env`, bản sao lưu, database cục bộ và môi trường Python vẫn được Git bỏ qua. Không đưa thông tin sinh viên thật lên kho công khai.

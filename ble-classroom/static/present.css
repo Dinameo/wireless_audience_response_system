@@ -16,9 +16,10 @@
 .present-footer{padding:18px 4vw 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;border-top:1px solid var(--line);color:#8ca2b3}.present-footer p{font-size:13px;margin:0;flex:1;min-width:240px}.slide-navigation{display:flex;align-items:center;gap:16px}.slide-navigation>span{font-size:13px;min-width:40px;text-align:center}.keyboard-hint{font-size:11px;flex-basis:100%;color:#658191}.presentation button:disabled{cursor:default}
 .present-footer{position:sticky;bottom:0;z-index:5;backdrop-filter:blur(14px)}
 .present-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;flex-basis:100%;padding-bottom:14px;border-bottom:1px solid var(--line)}
-.present-controls[hidden],.present-controls button[hidden]{display:none}
+.present-controls[hidden],.present-controls button[hidden],.present-controls a[hidden]{display:none}
 .present-controls strong{margin-right:auto;color:var(--text);font-size:13px}
 .present-controls button{min-height:42px;padding:10px 16px;font-size:12px;font-weight:700}
+.present-controls a{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:10px 16px;font-size:12px;font-weight:700;text-decoration:none}
 .present-controls .danger{border-color:#efc5c9;background:#fff3f3;color:#aa3044}
 .present-controls .danger:hover{background:#ffe8eb}
 .present-controls button:disabled{opacity:.55}

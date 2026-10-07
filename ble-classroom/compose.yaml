@@ -31,6 +31,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
     volumes:
       - ./data:/app/legacy-data:ro
+      - ./run:/app/host-radio:ro
     depends_on:
       db:
         condition: service_healthy

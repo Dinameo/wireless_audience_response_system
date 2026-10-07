@@ -4,7 +4,14 @@
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <HTTPClient.h>
-#include "secrets.h"  // Copy secrets.example.h; secrets.h is intentionally Git-ignored.
+#include <cstring>
+
+// Edit these four values before uploading. Never commit real Wi-Fi credentials
+// or a device token to a public GitHub repository.
+const char *WIFI_SSID = "thanh tung";
+const char *WIFI_PASSWORD = "viet123nam";
+const char *SERVER_URL = "http://192.168.2.7:8000";  // Laptop LAN IP; never localhost.
+const char *DEVICE_TOKEN = "0RptOuVG99-Zew-rVnW1rVhM2bHh6dyw4PIrLm2d09c";
 
 const int BUTTON_PINS[5] = {25, 26, 27, 32, 33};  // A, B, C, D, Submit.
 const int LED_CONNECT = 18;  // On only after the server accepts this device token.
@@ -13,6 +20,8 @@ const char CHOICES[4] = {'A', 'B', 'C', 'D'};
 const unsigned long POLL_MS = 1000;
 const unsigned long HEARTBEAT_MS = 5000;
 const unsigned long SERVER_CHECK_MS = 5000;
+const unsigned long WIFI_CONNECT_TIMEOUT_MS = 20000;
+const unsigned long WIFI_RETRY_MS = 5000;
 const unsigned long BLINK_MS = 250;
 const unsigned long DEBOUNCE_MS = 35;
 
@@ -28,9 +37,15 @@ bool stableReading[5] = {HIGH, HIGH, HIGH, HIGH, HIGH};
 unsigned long changedAt[5] = {0, 0, 0, 0, 0};
 unsigned long lastPoll = 0;
 unsigned long lastHeartbeat = 0;
-unsigned long lastConnectAttempt = 0;
 unsigned long lastServerCheck = 0;
 unsigned long lastBlink = 0;
+unsigned long wifiAttemptStarted = 0;
+unsigned long wifiRetryStarted = 0;
+unsigned long lastServerErrorLog = 0;
+bool configReady = false;
+bool wifiAttemptActive = false;
+bool wifiWasConnected = false;
+int lastServerCode = 0;
 
 void setServerConnected(bool connected) {
   if (serverConnected == connected) return;
@@ -45,6 +60,83 @@ void setNextLed(bool on) {
   lastBlink = millis();
 }
 
+void clearQuestion() {
+  currentQuestion = 0;
+  selectedChoice = '\0';
+  submitted = false;
+  answerAcked = false;
+  setNextLed(false);
+}
+
+bool validateConfig() {
+  if (!WIFI_SSID[0] || std::strcmp(WIFI_SSID, "YOUR_WIFI_SSID") == 0 ||
+      std::strcmp(WIFI_PASSWORD, "YOUR_WIFI_PASSWORD") == 0 ||
+      !DEVICE_TOKEN[0] || std::strcmp(DEVICE_TOKEN, "PASTE_ONE_TIME_ESP32_TOKEN") == 0 ||
+      std::strstr(SERVER_URL, "YOUR_SERVER_IP") != nullptr) {
+    Serial.println("Chua dien Wi-Fi/IP server/token o dau file .ino. Khong in mat khau hay token ra Serial.");
+    return false;
+  }
+  if (std::strncmp(SERVER_URL, "http://", 7) != 0) {
+    Serial.println("SERVER_URL phai bat dau bang http:// va dung IP LAN cua may web.");
+    return false;
+  }
+  return true;
+}
+
+// Begin only once. After a timeout, explicitly stop the attempt and wait before
+// WiFi.reconnect(); calling WiFi.begin() every five seconds while STA is still
+// connecting causes "wifi:sta is connecting, cannot set config".
+void startWifi() {
+  WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(false);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  wifiAttemptActive = true;
+  wifiAttemptStarted = millis();
+  Serial.println("ESP32 dang ket noi Wi-Fi...");
+}
+
+bool maintainWifi(unsigned long now) {
+  if (WiFi.status() == WL_CONNECTED) {
+    if (!wifiWasConnected) {
+      wifiWasConnected = true;
+      wifiAttemptActive = false;
+      lastServerCheck = 0;  // Authenticate with the web immediately.
+      lastPoll = 0;
+      Serial.print("Wi-Fi da ket noi. IP cua ESP32: ");
+      Serial.println(WiFi.localIP());
+    }
+    return true;
+  }
+
+  if (wifiWasConnected) {
+    wifiWasConnected = false;
+    setServerConnected(false);
+    clearQuestion();
+    WiFi.disconnect(false, false);
+    wifiAttemptActive = false;
+    wifiRetryStarted = now;
+    Serial.println("Mat Wi-Fi; se thu lai sau 5 giay.");
+  }
+  if (wifiAttemptActive && now - wifiAttemptStarted >= WIFI_CONNECT_TIMEOUT_MS) {
+    Serial.printf("Wi-Fi chua ket noi sau 20 giay (status=%d). Kiem tra SSID/mat khau/song Wi-Fi.\n",
+                  static_cast<int>(WiFi.status()));
+    WiFi.disconnect(false, false);
+    wifiAttemptActive = false;
+    wifiRetryStarted = now;
+  }
+  if (!wifiAttemptActive && now - wifiRetryStarted >= WIFI_RETRY_MS) {
+    wifiRetryStarted = now;
+    wifiAttemptActive = WiFi.reconnect();
+    if (wifiAttemptActive) {
+      wifiAttemptStarted = now;
+      Serial.println("Dang thu ket noi lai Wi-Fi...");
+    } else {
+      Serial.println("Chua bat dau duoc ket noi Wi-Fi; se thu lai sau 5 giay.");
+    }
+  }
+  return false;
+}
+
 void blinkNextLed(unsigned long now) {
   if (currentQuestion == 0 || answerAcked) return;
   if (now - lastBlink >= BLINK_MS) setNextLed(!nextLedOn);
@@ -57,7 +149,7 @@ int httpRequest(const char *method, const String &path, const String &body, Stri
   http.setTimeout(3000);
   http.addHeader("X-Device-Token", DEVICE_TOKEN);
   int code;
-  if (String(method) == "POST") {
+  if (std::strcmp(method, "POST") == 0) {
     http.addHeader("Content-Type", "application/json");
     code = http.POST(body);
   } else {
@@ -84,8 +176,23 @@ uint32_t jsonQuestionId(const String &json) {
 void checkServer() {
   String reply;
   int code = httpRequest("GET", "/api/device/ping", "", reply);
-  setServerConnected(code == 200);
-  if (code == 401) Serial.println("Ma ESP32 sai/da thu hoi. Tao ma moi tren web va nap lai board.");
+  if (code == 200) {
+    if (!serverConnected) lastPoll = 0;
+    setServerConnected(true);
+  } else {
+    setServerConnected(false);
+    clearQuestion();
+    const unsigned long now = millis();
+    if (code != lastServerCode || now - lastServerErrorLog >= 30000) {
+      if (code == 401) {
+        Serial.println("Token ESP32 sai/da thu hoi. Cap lai token tren web roi nap lai bo.");
+      } else {
+        Serial.printf("Web chua nhan ESP32 (HTTP %d). Kiem tra SERVER_URL va mang LAN.\n", code);
+      }
+      lastServerErrorLog = now;
+    }
+  }
+  lastServerCode = code;
 }
 
 void pollQuestion() {
@@ -104,16 +211,16 @@ void pollQuestion() {
     }
   } else if (code == 409 || code == 403) {
     if (currentQuestion != 0) Serial.println("Khong co cau hoi dang mo cho thiet bi nay.");
-    currentQuestion = 0;
-    selectedChoice = '\0';
-    submitted = false;
-    answerAcked = false;
-    setNextLed(false);
+    clearQuestion();
   } else if (code == 401) {
     setServerConnected(false);
-    Serial.println("Ma ESP32 sai/da thu hoi. Tao ma moi tren web va nap lai board.");
+    clearQuestion();
+    Serial.println("Token ESP32 sai/da thu hoi. Cap lai token tren web roi nap lai bo.");
   } else {
-    if (code < 0) setServerConnected(false);
+    if (code < 0) {
+      setServerConnected(false);
+      clearQuestion();
+    }
     Serial.printf("Khong lay duoc cau hoi (HTTP %d). Kiem tra Wi-Fi/server.\n", code);
   }
 }
@@ -125,7 +232,13 @@ void sendHeartbeat() {
                 ",\"gateway_id\":\"esp32:" + WiFi.macAddress() + "\"}";
   String reply;
   int code = httpRequest("POST", "/api/device/presence", body, reply);
-  if (code != 202) Serial.printf("Heartbeat chua duoc nhan (HTTP %d).\n", code);
+  if (code != 202) {
+    Serial.printf("Heartbeat chua duoc nhan (HTTP %d).\n", code);
+    if (code == 401) {
+      setServerConnected(false);
+      clearQuestion();
+    }
+  }
 }
 
 void submitChoice() {
@@ -146,8 +259,13 @@ void submitChoice() {
     submitted = true;  // Duplicate/expired: wait for the next question, do not retry blindly.
     Serial.println("Cau da het gio hoac da nop. Cho cau tiep theo.");
   } else {
-    if (code < 0 || code == 401) setServerConnected(false);
-    Serial.printf("Chua nop duoc (HTTP %d). Bam Submit de thu lai.\n", code);
+    if (code < 0 || code == 401) {
+      setServerConnected(false);
+      clearQuestion();
+      Serial.printf("Chua nop duoc (HTTP %d). Cho web ket noi lai roi chon dap an moi.\n", code);
+    } else {
+      Serial.printf("Chua nop duoc (HTTP %d). Bam Submit de thu lai.\n", code);
+    }
   }
 }
 
@@ -176,31 +294,29 @@ void setup() {
   pinMode(LED_NEXT, OUTPUT);
   digitalWrite(LED_CONNECT, LOW);
   digitalWrite(LED_NEXT, LOW);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  lastConnectAttempt = millis();
-  Serial.println("ESP32 Wi-Fi dang ket noi...");
+  configReady = validateConfig();
+  if (configReady) startWifi();
 }
 
 void loop() {
-  if (WiFi.status() != WL_CONNECTED) {
-    setServerConnected(false);
-    setNextLed(false);
-    currentQuestion = 0;
-    selectedChoice = '\0';
-    answerAcked = false;
-    if (millis() - lastConnectAttempt >= 5000) {
-      lastConnectAttempt = millis();
-      WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-      Serial.println("Dang ket noi lai Wi-Fi...");
-    }
-    delay(20);
+  if (!configReady) {
+    delay(1000);
+    return;
+  }
+  if (!maintainWifi(millis())) {
+    scanButtons();  // Track releases while offline; never submit without a question.
+    delay(10);
     return;
   }
   unsigned long now = millis();
   if (lastServerCheck == 0 || now - lastServerCheck >= SERVER_CHECK_MS) {
     lastServerCheck = now;
     checkServer();
+  }
+  if (!serverConnected) {
+    scanButtons();
+    delay(10);
+    return;
   }
   if (now - lastPoll >= POLL_MS) {
     lastPoll = now;

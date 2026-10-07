@@ -14,6 +14,7 @@ from starlette.concurrency import run_in_threadpool
 from authentication import COOKIE, configure_auth, init_accounts
 from workspace import configure_workspace, init_workspace, init_class_students, init_exam_devices, init_student_device_protocol
 from exam_api import configure_exam_api, expire_due_exams, init_score_scale, init_exam_title_rules
+from radio_api import configure_radio_api
 
 BASE = Path(__file__).resolve().parent
 DB_HOST = os.getenv('DB_HOST', 'localhost')
@@ -114,6 +115,7 @@ async def changed(owner):
 get_teacher_session = configure_auth(app, database)
 configure_workspace(app, database, changed)
 configure_exam_api(app, database, changed, GATEWAY_KEY)
+configure_radio_api(app, get_teacher_session)
 app.mount('/static', StaticFiles(directory=BASE / 'static'), name='static')
 
 

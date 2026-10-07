@@ -11,7 +11,8 @@ const pageInfo = {
   results:['Kết quả','Hành trình học tập','Theo dõi điểm và đáp án của từng sinh viên.'],
   imports:['Nhập dữ liệu','Tạo bài thi từ tài liệu','Nhập bộ câu hỏi Word hoặc PDF cho lớp–môn đang chọn.']
 };
-let authMode='login',socket=null,reconnectTimer=null,pollTimer=null,deviceTimer=null,noticeTimer=null,refreshPromise=null,refreshAgain=false;
+let authMode='login',socket=null,reconnectTimer=null,pollTimer=null,deviceTimer=null,radioTimer=null,noticeTimer=null,refreshPromise=null,refreshAgain=false;
+let hostRadio=null,radioBusy=false;
 function el(tag,text='',className=''){const n=document.createElement(tag);n.textContent=String(text??'');if(className)n.className=className;return n}
 function icon(name){const n=document.createElementNS('http://www.w3.org/2000/svg','svg');n.setAttribute('class','icon');n.setAttribute('aria-hidden','true');const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','#i-'+name);n.append(use);return n}
 function action(text,handler,className='secondary'){const n=el('button',text,className);n.type='button';n.onclick=()=>handler(n);return n}
@@ -49,10 +50,10 @@ function setAuthMode(mode){
   $('password').value='';$('confirmPassword').value='';$('password').type='password';
   $('togglePassword').setAttribute('aria-pressed','false');$('togglePassword').setAttribute('aria-label','Hiện mật khẩu');authError('');
 }
-function stopLive(){clearTimeout(reconnectTimer);clearInterval(pollTimer);clearInterval(deviceTimer);pollTimer=null;deviceTimer=null;const old=socket;socket=null;if(old)old.close()}
+function stopLive(){clearTimeout(reconnectTimer);clearInterval(pollTimer);clearInterval(deviceTimer);clearInterval(radioTimer);pollTimer=null;deviceTimer=null;radioTimer=null;const old=socket;socket=null;if(old)old.close()}
 function showAuth(error=''){
   stopLive();state.teacher=null;state.classes=[];state.subjects=[];state.courses=[];state.classId=null;state.courseId=null;state.setupStep=1;state.setupSubjectId=null;state.setupClassId=null;state.setupCourseId=null;state.students=[];state.exams=[];state.questions=[];state.exam=null;state.question=null;state.deviceExam=null;
-  if($('studentDialog').open)$('studentDialog').close();if($('examDialog').open)$('examDialog').close();if($('wifiTokenDialog').open)$('wifiTokenDialog').close();
+  if($('studentDialog').open)$('studentDialog').close();if($('examDialog').open)$('examDialog').close();if($('wifiTokenDialog').open)$('wifiTokenDialog').close();if($('radioDialog').open)$('radioDialog').close();hostRadio=null;
   $('workspace').hidden=true;$('authView').hidden=false;$('boot').hidden=true;$('message').hidden=true;
   $('password').value='';$('confirmPassword').value='';authError(error);
 }
@@ -63,7 +64,7 @@ async function enterWorkspace(teacher){
   sessionStorage.removeItem('teacherKey');authError('');
   const page=location.hash.slice(1);go(pageInfo[page]?page:'overview',false);
   try{await refresh()}catch(e){message(e.message,true)}
-  if(state.teacher){connectLive();pollTimer=setInterval(()=>refresh().catch(e=>message(e.message,true)),30000);deviceTimer=setInterval(()=>refreshDevices().catch(e=>message(e.message,true)),5000)}
+  if(state.teacher){connectLive();pollTimer=setInterval(()=>refresh().catch(e=>message(e.message,true)),30000);deviceTimer=setInterval(()=>refreshDevices().catch(e=>message(e.message,true)),5000);refreshHostRadio();radioTimer=setInterval(refreshHostRadio,15000)}
 }
 function sidebar(open){$('sidebar').classList.toggle('is-open',open);$('sidebarBackdrop').hidden=!open;$('mobileMenu').setAttribute('aria-expanded',String(open))}
 function go(page,updateHash=true){
@@ -362,7 +363,9 @@ function renderExams(){
       actions.append(action('Kết thúc bài thi',b=>finishExam(exam,b),'secondary danger'));
     }
     const present=el('a','Trình chiếu bài thi','secondary');present.href='/present/'+exam.id;present.target='_blank';present.rel='noopener';present.title='Mở trình chiếu trong tab mới';
-    actions.append(action(exam.status==='draft'?'Chỉnh đề thi':'Đổi tên',()=>openExamEditor(exam)),action(state.deviceExam===exam.id?'Ẩn thiết bị':'Xem thiết bị',()=>{state.deviceExam=state.deviceExam===exam.id?null:exam.id;renderExams();refreshDevices().catch(e=>message(e.message,true))}),present,action('Xem kết quả',()=>showExamResults(exam.id)),action('Xóa bài thi',b=>deleteExam(exam,b),'secondary danger'));
+    actions.append(action(exam.status==='draft'?'Chỉnh đề thi':'Đổi tên',()=>openExamEditor(exam)),action(state.deviceExam===exam.id?'Ẩn thiết bị':'Xem thiết bị',()=>{state.deviceExam=state.deviceExam===exam.id?null:exam.id;renderExams();refreshDevices().catch(e=>message(e.message,true))}),present,action('Xem kết quả',()=>showExamResults(exam.id)));
+    if(exam.status==='closed'){const exportLink=el('a','↓ Xuất điểm Excel','secondary');exportLink.href='/api/exams/'+exam.id+'/scores.xlsx';exportLink.download='bang_diem_bai_thi_'+exam.id+'.xlsx';actions.append(exportLink)}
+    actions.append(action('Xóa bài thi',b=>deleteExam(exam,b),'secondary danger'));
     box.append(actions);if(state.deviceExam===exam.id){box.classList.add('expanded');const devices=el('div','Đang tải trạng thái thiết bị…','device-panel');devices.dataset.deviceExam=exam.id;box.append(devices)}host.append(box);
   }
   tickCountdowns();
@@ -449,6 +452,44 @@ function renderQuestionResults(r){
   for(const s of r.students){const row=el('tr');for(const value of [s.mssv,s.name,s.device_id,s.choice??'Chưa nộp',formatScore(s.awarded_points)])row.append(el('td',value));table.append(row)}
   const wrap=el('div','','table');wrap.append(table);host.append(wrap);
 }
+function renderHostRadio(data){
+  hostRadio=data;
+  const service=Boolean(data?.service_available);
+  const wifi=data?.wifi,ble=data?.ble;
+  $('radioOpen').textContent=service?`Wi‑Fi: ${wifi?.connected?'đã nối':wifi?.enabled?'đang bật':'tắt'} · BLE: ${ble?.enabled?'bật':'tắt'}`:'Wi‑Fi / BLE: chưa kiểm tra được';
+  $('radioOpen').classList.toggle('radio-unavailable',!service);
+  $('radioMessage').textContent=service?'Trạng thái laptop được cập nhật tự động mỗi 15 giây.':data?.message||'Chưa kết nối được với dịch vụ radio trên laptop.';
+  for(const [radio,info,stateId,detailId,buttonId] of [
+    ['wifi',wifi,'wifiRadioState','wifiRadioDetail','wifiRadioToggle'],
+    ['ble',ble,'bleRadioState','bleRadioDetail','bleRadioToggle']]){
+    const label=radio==='wifi'?'Wi‑Fi':'BLE',button=$(buttonId);
+    $(stateId).textContent=!service?'Chưa đọc được':info?.error?'Không đọc được':!info?.available?'Laptop không có adapter':info.enabled?'Đang bật':'Đang tắt';
+    $(detailId).textContent=info?.error||(!service?'Cần chạy dịch vụ radio trên laptop.':radio==='wifi'&&info?.connected?'Đã kết nối mạng '+info.connection:radio==='wifi'&&info?.enabled?'Đã bật nhưng chưa vào mạng; ESP32 cần cùng mạng LAN.':radio==='ble'&&info?.enabled?'Bluetooth đã cấp nguồn; xem kết nối bo nRF ở mục Sinh viên.':'');
+    button.textContent=info?.enabled?'Tắt '+label:'Bật '+label;
+    button.disabled=radioBusy||!service||!info?.available||info.enabled===null||Boolean(info.error);
+    button.setAttribute('aria-pressed',String(Boolean(info?.enabled)));
+  }
+}
+async function refreshHostRadio(){
+  if(!state.teacher||radioBusy)return;
+  const teacher=state.teacher;
+  try{const data=await request('/host-radio');if(state.teacher===teacher)renderHostRadio(data)}
+  catch(error){if(state.teacher===teacher)renderHostRadio({service_available:false,message:error.message})}
+}
+async function setHostRadio(radio){
+  if(radioBusy||!hostRadio?.service_available)return;
+  const info=hostRadio[radio];if(!info?.available||info.enabled===null)return;
+  const enabled=!info.enabled;
+  if(!enabled){
+    const warning=radio==='wifi'?'Tắt Wi‑Fi của laptop sẽ ngắt ESP32, gateway từ xa và có thể mất trang web trên máy khác. Chỉ tắt nếu bạn có thể bật lại tại laptop hoặc qua Ethernet.':'Tắt Bluetooth của laptop sẽ ngắt các bo nRF đang kết nối với gateway.';
+    if(!window.confirm(warning+'\n\nBạn chắc chắn muốn tắt '+(radio==='wifi'?'Wi‑Fi':'BLE')+'?'))return;
+  }
+  radioBusy=true;renderHostRadio(hostRadio);
+  let errorText='';
+  try{const data=await request('/host-radio/'+radio,'POST',{enabled});renderHostRadio(data);if(data[radio]?.enabled!==enabled)throw Error('Laptop chưa chuyển được radio sang trạng thái yêu cầu. Hãy xem lại trạng thái và thử lại.');message((radio==='wifi'?'Wi‑Fi':'BLE')+(enabled?' đã bật.':' đã tắt.'))}
+  catch(error){errorText=error.message;message(error.message,true)}
+  finally{radioBusy=false;renderHostRadio(hostRadio);if(errorText)$('radioMessage').textContent=errorText}
+}
 function connection(online){const n=$('connection');n.classList.toggle('offline',!online);n.replaceChildren(el('span','','tiny-dot'),document.createTextNode(online?'Cập nhật trực tiếp':'Đang kết nối lại'))}
 function connectLive(){
   if(!state.teacher)return;clearTimeout(reconnectTimer);const old=socket;socket=null;if(old)old.close();
@@ -494,6 +535,10 @@ for(const [formId,kind,codeId,nameId] of [['classForm','classes','classCode','cl
 $('courseForm').onsubmit=async e=>{e.preventDefault();const b=e.submitter;b.disabled=true;try{await request('/classes/'+state.classId+'/courses','POST',{subject_id:Number($('subjectToAdd').value)});await refresh();message('Đã gắn thêm môn vào lớp và đồng bộ danh sách sinh viên.')}catch(error){message(error.message,true)}finally{b.disabled=false}};
 $('closeStudentDialog').onclick=$('cancelStudentEdit').onclick=()=>$('studentDialog').close();
 $('closeWifiToken').onclick=$('doneWifiToken').onclick=()=>$('wifiTokenDialog').close();
+$('radioOpen').onclick=()=>{$('radioDialog').showModal();refreshHostRadio()};
+$('closeRadio').onclick=()=>$('radioDialog').close();
+$('wifiRadioToggle').onclick=()=>setHostRadio('wifi');
+$('bleRadioToggle').onclick=()=>setHostRadio('ble');
 $('wifiTokenDialog').onclose=()=>{$('wifiTokenValue').value=''};
 $('copyWifiToken').onclick=async()=>{const input=$('wifiTokenValue');try{await navigator.clipboard.writeText(input.value);message('Đã sao chép mã ESP32.')}catch(error){input.select();message('Trình duyệt không cho sao chép tự động. Hãy nhấn Ctrl+C để lấy mã.',true)}};
 $('studentEditForm').onsubmit=async e=>{e.preventDefault();const b=e.submitter;b.disabled=true;try{await request('/classes/'+state.classId+'/students/'+$('editStudentId').value,'PATCH',{mssv:$('editMssv').value.trim(),name:$('editName').value.trim(),device_id:$('editDevice').value.trim(),preferred_protocol:$('editProtocol').value,revision:Number($('editStudentRevision').value)});$('studentDialog').close();await refresh();message($('editProtocol').value==='WIFI'?'Đã lưu ESP32. Nếu chưa có token, bấm “Tạo token” tại dòng sinh viên.':'Đã lưu nRF52840. Khi thi hãy xác nhận đúng mã bo.')}catch(error){message(error.message,true)}finally{b.disabled=false}};

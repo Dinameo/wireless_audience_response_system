@@ -53,7 +53,7 @@ ESP32 dùng HTTP nên `NEXT` và `ACK` là tín hiệu tương đương do firmw
 ## Thử với web
 
 1. Chạy web/MySQL. Trên máy đã cài gateway BLE tự khởi động, kiểm tra `systemctl --user status ble-classroom-gateway.service`; **không chạy thêm gateway thứ hai**. Nạp sketch nRF theo [`NRF52840_PROMICRO_TEST.md`](NRF52840_PROMICRO_TEST.md).
-2. Với ESP32, cài Arduino core ESP32, chọn đúng loại bo, sửa `WIFI_SSID`, `WIFI_PASSWORD`, `SERVER_URL` (IP LAN của máy web, không phải `localhost`) và `DEVICE_TOKEN` ở đầu sketch rồi nạp. Mã token lấy một lần từ nút **Kích hoạt ESP32** trên web. Không chia sẻ token hoặc đưa lên kho công khai.
+2. Với ESP32, cài Arduino core ESP32, chọn đúng loại bo, rồi sửa `WIFI_SSID`, `WIFI_PASSWORD`, `SERVER_URL` (IP LAN của máy web, không phải `localhost`) và `DEVICE_TOKEN` ngay ở đầu `esp32_wifi_exam/esp32_wifi_exam.ino` trước khi nạp. Mã token lấy một lần từ web. Không chia sẻ token hoặc đưa sketch đã điền mật khẩu/token lên kho công khai.
 3. Mở Serial Monitor 115200 của từng bo. nRF in `Device ID: NRF-...`; ESP32 in `Server da nhan thiet bi.` sau khi token hợp lệ. Ở bước **Chọn thiết bị & bắt đầu**, gán mã bo tương ứng cho từng sinh viên; hai bo phải được gán cho **hai sinh viên khác nhau trong cùng lượt thi**.
 4. Mở câu hỏi trên web: kiểm tra LED NEXT nháy. Nhấn A, rồi SUBMIT: chỉ khi web nhận đáp án, LED NEXT mới tắt. Ở màn thi, mở **Xem thiết bị** để xem BLE/Wi-Fi, sinh viên và trạng thái tín hiệu. Chuyển câu: LED NEXT nháy trở lại.
 

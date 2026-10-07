@@ -8,6 +8,7 @@ ble-classroom/esp32_wifi_exam/secrets.h
 ble-classroom/ble-classroom-gateway.service
 
 # Local databases, backups and generated exports
+ble-classroom/run/
 ble-classroom/data/
 ble-classroom/backups/
 **/exports/

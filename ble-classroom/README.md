@@ -13,6 +13,26 @@ Web GUI dành cho giảng viên, API nhận câu trả lời từ gateway BLE ho
 5. Đăng nhập → vào **Lớp & môn**. Giao diện đưa qua từng màn hình: **(1) tạo/chọn môn → (2) tạo/chọn lớp → (3) thêm sinh viên** bằng biểu mẫu hoặc Excel. Tạo xong mỗi bước sẽ tự chuyển sang bước tiếp; dữ liệu cũ có thể chọn lại, không cần tạo trùng. Có thể gắn thêm môn trong phần mở rộng ở bước 3; danh sách sinh viên của lớp được dùng chung cho các môn. Sau đó tạo bài thi từ Word/PDF hoặc tạo câu hỏi riêng lẻ.
 6. Chạy `python3 simulate_submit.py BTN-01 C --sequence 1`. Giao diện sẽ cập nhật phiếu đã nộp. Bấm **Đóng câu hỏi** để chấm điểm.
 
+### Bật điều khiển Wi‑Fi/BLE của laptop từ web
+
+Nút **Wi‑Fi / BLE** ở góc trên workspace đọc trạng thái radio của **laptop chạy Docker**, không phải trạng thái từng bo. Docker không được quyền điều khiển phần cứng host trực tiếp; cần chạy `host_radio.py` trên laptop. Dịch vụ này chỉ nhận bốn lệnh cố định qua Unix socket riêng trong thư mục `run/` (không mở cổng mạng). Nút tắt Wi‑Fi có xác nhận vì sẽ ngắt ESP32 và có thể làm mất truy cập web từ máy khác. Bật/tắt BLE có thể làm gateway ngắt các bo nRF; sau khi bật lại, chờ gateway kết nối lại. Nếu radio bị `rfkill`/BlueZ khóa hoặc tài khoản Linux không có quyền, web sẽ hiển thị lỗi hệ thống thay vì báo đã bật thành công.
+
+Thử ngay trên laptop (terminal riêng):
+
+```bash
+python3 host_radio.py
+```
+
+Muốn tự chạy khi đăng nhập Ubuntu, sao chép `ble-classroom-radio.service.example` thành `~/.config/systemd/user/ble-classroom-radio.service`, thay **cả hai** `/ABS/PATH/TO/ble-classroom` bằng đường dẫn tuyệt đối của thư mục này, rồi chạy:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now ble-classroom-radio.service
+systemctl --user status ble-classroom-radio.service
+```
+
+Sau khi chạy helper, dùng `docker compose up --build -d` để web có socket mount và API mới. Nếu chỉ cần xem kết nối từng nRF/ESP32, dùng mục **Sinh viên** hoặc **Xem thiết bị** trong bài thi; trạng thái radio bật không có nghĩa là bo đã kết nối.
+
 ## Giao diện và tài khoản giảng viên
 
 Giao diện robot & AI dùng nền trắng, điểm nhấn xanh mint và tím pastel; chữ xanh đậm giúp dễ đọc trên nền sáng. Minh họa robot SVG được phục vụ ngay từ ứng dụng. Trang đăng nhập, workspace và màn hình trình chiếu dùng chung bảng màu trong `static/theme-light.css`. Hỗ trợ màn hình máy tính và điện thoại, hiệu ứng nhẹ và tùy chọn giảm chuyển động của hệ điều hành.
@@ -46,7 +66,7 @@ D. Zigbee
 
 Cũng có thể đặt bảng đáp án ở cuối file, ví dụ `Đáp án: 1-B, 2-A, 3-D`. Tổng bài thi luôn 10 điểm, chia đều cho số câu. Với 3 câu, điểm lưu là 3,333334 + 3,333333 + 3,333333 = 10; giao diện làm tròn khi hiển thị. Nếu tài liệu cũ có dòng `Điểm: ...`, dòng đó được bỏ qua. Hệ thống kiểm tra đủ A, B, C, D và đáp án trước khi ghi vào MySQL; nếu một câu sai định dạng thì cả file chưa được nhập. Cột điểm trung bình trong danh sách sinh viên lấy trung bình các bài thi đã hoàn thành của lớp–môn, nên cũng trên thang 10; câu hỏi riêng lẻ được xem kết quả riêng.
 
-Mỗi file câu hỏi được tạo thành một **bài thi** của lớp–môn đang chọn. Ở mục **Sinh viên → Thiết lập**, chọn loại bo dự định (nRF52840 BLE hoặc ESP32 Wi-Fi), rồi nhập mã bo gợi ý; chỉ sinh viên dùng ESP32 mới thấy bước **Tạo token**. Khi bấm **Chọn thiết bị & bắt đầu**, hộp kiểm tra đi theo 2 bước: chọn loại bo và mã cho từng sinh viên, sau đó xem lại toàn bộ và xác nhận mở câu 1. ESP32 chỉ chọn được mã Wi-Fi đã kích hoạt; **token chỉ dán vào firmware, không nhập vào ô mã bo**. nRF có thể chọn bo gateway đang thấy hoặc nhập mã mới. Cặp thiết bị–sinh viên được lưu trong MySQL cho lượt thi này. Sinh viên nhìn câu hỏi trên màn chiếu và chọn đáp án bằng thiết bị. Mỗi sinh viên chỉ được ghi một đáp án cho mỗi câu nên không thể chọn lại. Khi tất cả sinh viên trong danh sách bài thi đã nộp, server tự đóng câu hiện tại và mở câu kế tiếp; giáo viên có thể bấm **Chuyển câu tiếp theo** nếu có người vắng. Sau câu cuối, mục **Xem kết quả** có biểu đồ **cột, đường, phân bố điểm** trên thang 10, điểm trung bình, lựa chọn đúng/sai và tổng điểm từng sinh viên. Nút **Tải bảng điểm Excel** xuất hai sheet: Bảng điểm và Chi tiết câu trả lời. Có thể dùng script mô phỏng để nộp thử hoặc [kết nối nRF52840 thật](NRF52840_PROMICRO_TEST.md).
+Mỗi file câu hỏi được tạo thành một **bài thi** của lớp–môn đang chọn. Ở mục **Sinh viên → Thiết lập**, chọn loại bo dự định (nRF52840 BLE hoặc ESP32 Wi-Fi), rồi nhập mã bo gợi ý; chỉ sinh viên dùng ESP32 mới thấy bước **Tạo token**. Khi bấm **Chọn thiết bị & bắt đầu**, hộp kiểm tra đi theo 2 bước: chọn loại bo và mã cho từng sinh viên, sau đó xem lại toàn bộ và xác nhận mở câu 1. ESP32 chỉ chọn được mã Wi-Fi đã kích hoạt; **token chỉ dán vào firmware, không nhập vào ô mã bo**. nRF có thể chọn bo gateway đang thấy hoặc nhập mã mới. Cặp thiết bị–sinh viên được lưu trong MySQL cho lượt thi này. Sinh viên nhìn câu hỏi trên màn chiếu và chọn đáp án bằng thiết bị. Mỗi sinh viên chỉ được ghi một đáp án cho mỗi câu nên không thể chọn lại. Khi tất cả sinh viên trong danh sách bài thi đã nộp, server tự đóng câu hiện tại và mở câu kế tiếp; giáo viên có thể bấm **Chuyển câu tiếp theo** nếu có người vắng. Sau câu cuối, mục **Xem kết quả** có biểu đồ **cột, đường, phân bố điểm** trên thang 10, điểm trung bình, lựa chọn đúng/sai và tổng điểm từng sinh viên. Sau khi bài thi kết thúc, nút **Xuất điểm Excel** có ngay trên thẻ bài thi, ở cuối màn trình chiếu và trong trang Kết quả; file có hai sheet: Bảng điểm và Chi tiết câu trả lời. Có thể dùng script mô phỏng để nộp thử hoặc [kết nối nRF52840 thật](NRF52840_PROMICRO_TEST.md).
 
 Khi tạo bài thi, có thể điền **Thời gian mỗi câu** từ 5 đến 3600 giây hoặc để trống để tắt hẹn giờ. Có thể đổi thời gian trong **Chỉnh đề thi** khi đề còn nháp; sau khi bắt đầu thì cấu hình được khóa. Web giảng viên và màn trình chiếu cùng hiện đồng hồ đếm ngược. Hết giờ, server tự đóng câu và chuyển sang câu kế tiếp, kể cả khi không mở trình duyệt; đáp án/tín hiệu trễ của câu cũ bị từ chối. Nộp đủ trước giờ vẫn tự chuyển ngay. Sau câu cuối, bài thi tự kết thúc và chấm kết quả. Mỗi lần chuyển câu bắt đầu lại đủ thời gian đã đặt. Đồng hồ trên trình duyệt chỉ để hiển thị; thời hạn trên server là nguồn quyết định.
 
@@ -60,7 +80,7 @@ Khi bấm **Chọn thiết bị & bắt đầu**, web mở tab xem trước `/pr
 
 - **Bản nháp:** xem trước từng câu bằng nút Câu trước/Câu sau hoặc phím ←/→; bấm **Chọn thiết bị & bắt đầu** trên màn chiếu khi sẵn sàng. Trước lúc bắt đầu, thiết bị chưa thể nộp đáp án.
 - **Đang thi:** tự đồng bộ với câu đang mở qua WebSocket, có số sinh viên đã nộp. Giảng viên có thể chuyển câu hoặc kết thúc ngay ở thanh điều khiển dưới màn chiếu; không lật riêng slide khi đang thi. Nếu còn sinh viên chưa nộp, chuyển câu cần xác nhận.
-- **Đã kết thúc:** hiện thông báo kết thúc; có thể bấm Xem lại câu hỏi mà không mở lại bài thi.
+- **Đã kết thúc:** hiện thông báo kết thúc; có thể bấm Xuất điểm Excel hoặc Xem lại câu hỏi mà không mở lại bài thi.
 
 Trong lúc thi, màn hình chiếu chỉ có câu hỏi, bốn lựa chọn, tiến độ tổng hợp và các nút điều khiển; không đưa đáp án đúng, tên sinh viên hay kết quả cá nhân lên slide. Hộp chọn thiết bị **trước khi bắt đầu** có tên/MSSV để giảng viên chốt đúng bo, nên hãy hoàn tất bước này trước khi đưa tab lên máy chiếu cho cả lớp. Có thể bấm **Chọn thiết bị & bắt đầu** ngay trên màn chiếu khi xem trước đề nháp. Nút **Kết thúc bài thi** cần xác nhận và giữ đáp án đã nộp. Khi bài bị xóa hoặc hết phiên đăng nhập, nội dung được gỡ khỏi màn hình. Nếu mất kết nối, có cảnh báo dữ liệu có thể cũ và tự thử lại (cập nhật định kỳ mỗi 10 giây khi không có kết nối trực tiếp). Đây là trình chiếu web, chưa phải xuất file PowerPoint.
 
@@ -130,10 +150,10 @@ Gateway nRF52840 hiện gửi heartbeat cho từng bo khoảng 5 giây/lần, k�
 
 ### ESP32 qua Wi-Fi (không cần gateway BLE)
 
-Mỗi ESP32 có **một token bí mật riêng cho thiết bị**, không gắn cố định với sinh viên và không giữ `GATEWAY_KEY` chung. Trong mục **Sinh viên → Thiết lập**, chọn **ESP32 · Wi-Fi**, nhập mã thiết bị (ví dụ `ESP32-01`) và lưu; sau đó bấm **Tạo token**. Sao chép token hiện một lần và dán vào `DEVICE_TOKEN` của [sketch Arduino](esp32_wifi_exam/esp32_wifi_exam.ino). **Cấp lại token** thu hồi token cũ; **Thu hồi Wi-Fi** dừng quyền truy cập của board ở mọi lớp. MySQL chỉ lưu SHA-256 của token, không lưu token gốc. Trước mỗi bài thi, chọn mã `ESP32-01` cho sinh viên sẽ cầm bo đó; cùng bo có thể được giao cho sinh viên khác ở lượt thi sau.
+Mỗi ESP32 có **một token bí mật riêng cho thiết bị**, không gắn cố định với sinh viên và không giữ `GATEWAY_KEY` chung. Trong mục **Sinh viên → Thiết lập**, chọn **ESP32 · Wi-Fi**, nhập mã thiết bị (ví dụ `ESP32-01`) và lưu; sau đó bấm **Tạo token**. Sao chép token hiện một lần và dán vào `DEVICE_TOKEN` ở đầu `esp32_wifi_exam/esp32_wifi_exam.ino`. **Cấp lại token** thu hồi token cũ; **Thu hồi Wi-Fi** dừng quyền truy cập của board ở mọi lớp. MySQL chỉ lưu SHA-256 của token, không lưu token gốc. Trước mỗi bài thi, chọn mã `ESP32-01` cho sinh viên sẽ cầm bo đó; cùng bo có thể được giao cho sinh viên khác ở lượt thi sau.
 
 1. Cài [Arduino core cho ESP32 của Espressif](https://docs.espressif.com/projects/arduino-esp32/en/latest/installing.html) và chọn board phù hợp. Sketch mẫu giả định ESP32 DevKit với năm nút nhấn nối GPIO `25, 26, 27, 32, 33` xuống GND tương ứng A/B/C/D/Submit; dùng `INPUT_PULLUP`. Hai LED nối GPIO `18`/`19` qua điện trở hạn dòng; xem [sơ đồ đấu dây](HARDWARE_WIRING.md). Kiểm tra sơ đồ chân của **board thực tế** trước khi đấu, nhất là nếu dùng ESP32-S3/C3 hoặc board có ngoại vi sẵn.
-2. Sao chép `esp32_wifi_exam/secrets.example.h` thành `esp32_wifi_exam/secrets.h`, rồi sửa `WIFI_SSID`, `WIFI_PASSWORD`, `SERVER_URL` và `DEVICE_TOKEN` trong `secrets.h`. `SERVER_URL` phải là `http://IP_MAY_CHU:8000`, **không phải** `localhost`; ESP32 và máy chủ cần nhìn thấy nhau trên cùng mạng. `secrets.h` bị Git bỏ qua; không đưa file này lên kho công khai.
+2. Mở `esp32_wifi_exam/esp32_wifi_exam.ino` và sửa bốn giá trị `WIFI_SSID`, `WIFI_PASSWORD`, `SERVER_URL`, `DEVICE_TOKEN` ở đầu file. `SERVER_URL` phải là `http://IP_MAY_CHU:8000`, **không phải** `localhost`; ESP32 và máy chủ cần nhìn thấy nhau trên cùng mạng. Vì cấu hình nằm ngay trong sketch, **không commit/push file này khi đã điền mật khẩu hoặc token thật**; trước khi đưa lên GitHub, thay lại bằng các giá trị mẫu.
 3. Nạp sketch, mở Serial Monitor ở 115200 baud. Board xác thực mã qua `GET /api/device/ping` mỗi 5 giây; LED CONNECT sáng khi server nhận. Khi bắt đầu bài thi, board hỏi `GET /api/device/current` khoảng mỗi giây, gửi heartbeat Wi-Fi mỗi 5 giây, đọc RSSI, và chỉ gửi `POST /api/device/answers` khi nhấn Submit. LED NEXT nháy từ câu mới đến HTTP 201 có `ACK`. Nút A–D chọn lựa chọn trước khi nộp; sau khi server nhận phiếu, board khóa lựa chọn đến câu tiếp theo. Nếu Wi-Fi đứt, bảng thiết bị sẽ chuyển sang **Mất tín hiệu** sau 15 giây.
 4. Trong thẻ bài thi bấm **Xem thiết bị**: giao thức `WIFI`, tên sinh viên, RSSI và tình trạng nộp sẽ hiện. Nếu chưa có heartbeat, bảng vẫn cho biết `WIFI (dự kiến)` nhưng trạng thái là **Chưa có tín hiệu**. Nộp đáp án không tự tạo kết nối giả.
 
