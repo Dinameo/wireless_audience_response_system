@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#ffffff">
+<title>Trình chiếu · NEXUS Classroom</title>
+<link rel="icon" href="/static/robot.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/present.css?v=20261002c"><link rel="stylesheet" href="/static/theme-light.css?v=20261005d">
+<script src="/static/device-checkin.js?v=20261014c" defer></script><script src="/static/present.js?v=20261007a" defer></script>
+</head>
+<body class="presentation">
+<header class="present-header">
+<a href="/#exams" target="_blank" rel="noopener" class="brand" aria-label="Mở trang giảng viên"><span class="brand-mark">N</span><span>NEXUS<span class="brand-sub">CLASSROOM / LIVE EXAM</span></span></a>
+<span id="liveConnection" class="present-connection" role="status">Đang kết nối…</span>
+<button id="fullscreen" class="secondary" type="button" aria-pressed="false">Toàn màn hình</button>
+</header>
+<div id="presentNotice" class="present-notice" role="status" hidden></div>
+<main class="present-main">
+<div class="present-heading"><div><span class="eyebrow">EXAM PROJECTION</span><h1 id="examTitle">Trình chiếu bài thi</h1></div><span id="examMode" class="present-mode">Đang tải</span></div>
+<section id="questionSlide" class="question-slide" aria-labelledby="questionText" hidden>
+<div class="slide-meta"><span id="slideCounter" class="slide-counter"></span><span id="slideTimer" class="slide-timer" role="timer" hidden></span><span id="slidePoints"></span></div>
+<h2 id="questionText"></h2>
+<div id="slideOptions" class="slide-options"></div>
+<div id="submissionProgress" class="submission-progress" hidden><div class="submission-caption"><span>Sinh viên đã nộp</span><strong id="submissionCount"></strong></div><div class="submission-track" role="progressbar" aria-label="Sinh viên đã nộp" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="submissionBar"></span></div></div>
+</section>
+<section id="statusSlide" class="status-slide" aria-labelledby="statusTitle"><img src="/static/robot.svg" alt="" aria-hidden="true"><span class="eyebrow">NEXUS / LEARNING COMPANION</span><h2 id="statusTitle">Đang chuẩn bị màn hình…</h2><p id="statusDescription">Câu hỏi sẽ xuất hiện trong giây lát.</p><button id="reviewSlides" class="secondary" type="button" hidden>Xem lại câu hỏi</button><a id="loginLink" class="primary" href="/#exams" target="_blank" rel="noopener" hidden>Đăng nhập giảng viên</a></section>
+</main>
+<footer class="present-footer"><div id="teacherControls" class="present-controls" aria-label="Điều khiển bài thi của giảng viên" hidden><strong>Điều khiển bài thi</strong><button id="startExamControl" class="primary" type="button" hidden>Chọn thiết bị &amp; bắt đầu</button><button id="advanceExamControl" class="primary" type="button" hidden>Chuyển câu tiếp theo →</button><button id="finishExamControl" class="secondary danger" type="button" hidden>Kết thúc bài thi</button><a id="exportScoresControl" class="secondary" href="#" download hidden>↓ Xuất điểm Excel</a></div><p id="modeHint">Sinh viên chọn đáp án trên thiết bị; giảng viên điều khiển bài thi ở thanh bên dưới.</p><div id="slideNavigation" class="slide-navigation" hidden><button id="previousSlide" class="secondary" type="button" aria-label="Câu trước">← Câu trước</button><span id="navigationCounter"></span><button id="nextSlide" class="secondary" type="button">Câu sau →</button></div><span class="keyboard-hint">F: toàn màn hình · Esc: thoát toàn màn hình</span></footer>
+<dialog id="teacherConfirm" class="present-confirm" aria-labelledby="teacherConfirmTitle"><h2 id="teacherConfirmTitle"></h2><p id="teacherConfirmText"></p><div class="present-confirm-actions"><button id="teacherCancel" class="secondary" type="button">Hủy</button><button id="teacherApprove" class="primary" type="button">Xác nhận</button></div></dialog>
+</body>
+</html>
