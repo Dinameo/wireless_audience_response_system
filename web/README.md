@@ -4,9 +4,15 @@ Repository này chỉ chứa giao diện giảng viên, FastAPI và MySQL. Khôn
 
 ## Chạy nhanh bằng Docker
 
-1. Cài Docker Engine và Docker Compose plugin.
+1. Cài Docker Engine và Docker Compose plugin, rồi lấy đúng nhánh web:
+
+   ```bash
+   git clone -b web-deploy --single-branch https://github.com/Dinameo/wireless_audience_response_system.git
+   cd wireless_audience_response_system/web
+   ```
+
 2. Sao chép `.env.example` thành `.env`. Thay **cả ba** giá trị `GATEWAY_KEY`, `DB_PASSWORD`, `DB_ROOT_PASSWORD` bằng chuỗi mạnh, khác nhau. Không commit hoặc gửi file `.env` cho người khác.
-3. Trong thư mục repository, chạy:
+3. Trong thư mục `web/`, chạy:
 
    ```bash
    docker compose up --build -d
