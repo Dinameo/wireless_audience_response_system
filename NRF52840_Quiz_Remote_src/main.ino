@@ -57,12 +57,12 @@ void setup() {
 
   nrf_gpio_cfg_output(LED_CONNECT);
   nrf_gpio_cfg_output(nrfPin(LED_SENT));
-  // Wake the nRF from low-power idle when any active-low answer button is pressed.
-  nrf_gpio_cfg_sense_input(BUTTON_A, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW);
-  nrf_gpio_cfg_sense_input(BUTTON_B, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW);
-  nrf_gpio_cfg_sense_input(BUTTON_C, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW);
-  nrf_gpio_cfg_sense_input(BUTTON_D, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW);
-  nrf_gpio_cfg_sense_input(nrfPin(BUTTON_SUBMIT), NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW);
+  // Configure active-low answer buttons without internal pull resistors; external biasing is required.
+  nrf_gpio_cfg_sense_input(BUTTON_A, NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_SENSE_LOW);
+  nrf_gpio_cfg_sense_input(BUTTON_B, NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_SENSE_LOW);
+  nrf_gpio_cfg_sense_input(BUTTON_C, NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_SENSE_LOW);
+  nrf_gpio_cfg_sense_input(BUTTON_D, NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_SENSE_LOW);
+  nrf_gpio_cfg_sense_input(nrfPin(BUTTON_SUBMIT), NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_SENSE_LOW);
   nrf_gpio_pin_clear(LED_CONNECT);
   nrf_gpio_pin_clear(nrfPin(LED_SENT));
 
@@ -107,8 +107,8 @@ void loop() {
     }
   }
   if (connected && authenticated && questionActive && !waitingAck) checkButtons();
-  // Sleep until a BLE event, timer, or button GPIO sense event wakes the MCU.
-  sd_app_evt_wait();
+  // Keep the loop running so the connection LED can toggle on schedule.
+  delay(5);
 }
 
 void connect_callback(uint16_t conn_hdl) {
@@ -158,20 +158,20 @@ void write_callback(uint16_t conn_hdl, BLECharacteristic* chr, uint8_t* data, ui
 void processServerMessage(const char* message) {
   if (strcmp(message, "ACCEPT") == 0) {
     authenticated = true;
+    nrf_gpio_pin_set(LED_CONNECT);
     questionActive = false; // Wait for NEXT before accepting an answer.
     answerSelected = false;
     sentBlinkActive = false;
     sentLedOn = false;
     nrf_gpio_pin_clear(nrfPin(LED_SENT));
-    nrf_gpio_pin_set(LED_CONNECT);
     Serial.println("AUTHENTICATION ACCEPTED");
   } else if (strcmp(message, "REJECT") == 0) {
     authenticated = false;
+    nrf_gpio_pin_clear(LED_CONNECT);
     questionActive = false;
     answerSelected = false;
     sentBlinkActive = false;
     sentLedOn = false;
-    nrf_gpio_pin_clear(LED_CONNECT);
     nrf_gpio_pin_clear(nrfPin(LED_SENT));
     Serial.println("AUTHENTICATION REJECTED");
   } else if (strcmp(message, "ACK") == 0) {
