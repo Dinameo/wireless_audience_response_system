@@ -4,7 +4,7 @@ Mỗi bo dùng **5 nút nhấn riêng** và **2 LED riêng**. nRF52840 giao ti�
 
 ## nRF52840 Pro Micro / nice!nano-style trong ảnh
 
-Các số `017`, `020`… là **nhãn in trên chính bo**, không phải Arduino D17/D20. Firmware: [`nrf52840_promicro_quiz.ino`](nrf52840_promicro_quiz/nrf52840_promicro_quiz.ino).
+Các số `017`, `020`… là **nhãn in trên chính bo**, không phải Arduino D17/D20. Firmware theo PDF: [`nrf52840_pdf_quiz.ino`](nrf52840_pdf_quiz/nrf52840_pdf_quiz.ino) (mặc định `STUDENT_001`). Firmware GATT cũ vẫn dùng được: [`nrf52840_promicro_quiz.ino`](nrf52840_promicro_quiz/nrf52840_promicro_quiz.ino) (mặc định `BLE-001`).
 
 | Chức năng | Chân in trên bo |
 | --- | --- |
@@ -42,19 +42,20 @@ Các số `017`, `020`… là **nhãn in trên chính bo**, không phải Arduin
 | Trạng thái | nRF52840 BLE | ESP32 Wi-Fi |
 | --- | --- | --- |
 | Chưa kết nối | Cả hai tắt | Cả hai tắt |
-| Đã kết nối | CONNECT sáng khi liên kết BLE tới gateway | CONNECT sáng khi có Wi-Fi **và** web chấp nhận mã thiết bị |
+| ID hợp lệ, đã xác thực | CONNECT sáng sau `ACCEPT`, có thể trước giờ thi | CONNECT sáng khi có Wi-Fi **và** web chấp nhận mã thiết bị |
 | Có câu mới (`NEXT`) | NEXT nháy mỗi 250 ms | NEXT nháy khi nhận `question_id` mới từ web |
 | Chọn A/B/C/D | Chỉ lưu lựa chọn trên bo, NEXT tiếp tục nháy | Tương tự |
 | Bấm SUBMIT, server nhận (`ACK`) | NEXT tắt khi gateway gửi `ACK` | NEXT tắt khi HTTP 201 kèm `ACK` |
 | Mất kết nối / hết bài | Cả hai tắt khi BLE đứt; hết bài NEXT tắt | Cả hai tắt khi mất Wi-Fi; hết câu NEXT tắt |
 
 ESP32 dùng HTTP nên `NEXT` và `ACK` là tín hiệu tương đương do firmware suy ra từ phản hồi web, không phải BLE notification. Nếu server từ chối đáp án, **không có ACK** và đèn NEXT không được báo nộp thành công.
+Với nRF theo tài liệu BLE Client, bo đã đăng ký được `ACCEPT` ngay sau `ID` nên CONNECT có thể sáng trước giờ thi. Bo chưa đăng ký hoặc không thuộc lượt thi đang mở nhận `REJECT`; ngắt BLE cũng làm CONNECT tắt. Kết thúc bài, gateway gửi `DISCONNECT`, sau đó bo có thể quảng bá và kết nối lại cho lượt sau.
 
 ## Thử với web
 
 1. Chạy web/MySQL. Trên máy đã cài gateway BLE tự khởi động, kiểm tra `systemctl --user status ble-classroom-gateway.service`; **không chạy thêm gateway thứ hai**. Nạp sketch nRF theo [`NRF52840_PROMICRO_TEST.md`](NRF52840_PROMICRO_TEST.md).
 2. Với ESP32, cài Arduino core ESP32, chọn đúng loại bo, rồi sửa `WIFI_SSID`, `WIFI_PASSWORD`, `SERVER_URL` (IP LAN của máy web, không phải `localhost`) và `DEVICE_TOKEN` ngay ở đầu `esp32_wifi_exam/esp32_wifi_exam.ino` trước khi nạp. Mã token lấy một lần từ web. Không chia sẻ token hoặc đưa sketch đã điền mật khẩu/token lên kho công khai.
-3. Mở Serial Monitor 115200 của từng bo. nRF in `Device ID: NRF-...`; ESP32 in `Server da nhan thiet bi.` sau khi token hợp lệ. Ở bước **Chọn thiết bị & bắt đầu**, gán mã bo tương ứng cho từng sinh viên; hai bo phải được gán cho **hai sinh viên khác nhau trong cùng lượt thi**.
+3. Mở Serial Monitor 115200 của từng bo. Sketch nRF trong project in `Device ID: BLE-001`; sketch một characteristic trong tài liệu BLE Client gửi `ID:STUDENT_001` nếu giữ nguyên `CLIENT_ID`. Nhập **đúng ID bo thực sự gửi** trên web. ESP32 in `Server da nhan thiet bi.` sau khi token hợp lệ. Ở bước **Chọn thiết bị & bắt đầu**, gán mã bo tương ứng cho từng sinh viên; hai bo phải được gán cho **hai sinh viên khác nhau trong cùng lượt thi**.
 4. Mở câu hỏi trên web: kiểm tra LED NEXT nháy. Nhấn A, rồi SUBMIT: chỉ khi web nhận đáp án, LED NEXT mới tắt. Ở màn thi, mở **Xem thiết bị** để xem BLE/Wi-Fi, sinh viên và trạng thái tín hiệu. Chuyển câu: LED NEXT nháy trở lại.
 
 Nếu ESP32 là **C3/S3** hoặc không thấy các chân `25/26/27/32/33/18/19` in trên bo, **dừng ở đây** và xác nhận mã bo trước khi cắm dây; không suy đoán chân theo bảng ESP32 DevKit.

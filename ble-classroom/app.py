@@ -54,8 +54,20 @@ def init_db():
             device_id VARCHAR(40) NOT NULL PRIMARY KEY,
             gateway_id VARCHAR(64) NOT NULL,
             connected BOOLEAN NOT NULL,
-            last_seen DATETIME(3) NOT NULL
+            last_seen DATETIME(3) NOT NULL,
+            gatt_profile VARCHAR(16) NULL,
+            authorized BOOLEAN NOT NULL DEFAULT FALSE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci""")
+        db.execute("""SELECT 1 FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='ble_device_inventory'
+            AND COLUMN_NAME='gatt_profile'""")
+        if not db.fetchone():
+            db.execute('ALTER TABLE ble_device_inventory ADD COLUMN gatt_profile VARCHAR(16) NULL')
+        db.execute("""SELECT 1 FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='ble_device_inventory'
+            AND COLUMN_NAME='authorized'""")
+        if not db.fetchone():
+            db.execute('ALTER TABLE ble_device_inventory ADD COLUMN authorized BOOLEAN NOT NULL DEFAULT FALSE')
         db.execute("""CREATE TABLE IF NOT EXISTS exams (
             id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, title VARCHAR(200) NOT NULL,
             status ENUM('draft','open','closed') NOT NULL DEFAULT 'draft',

@@ -223,7 +223,7 @@ function renderStudents(){
       el('span',s.device_id||'Chưa chọn mã bo',s.device_id?'device-tag':'muted'));device.append(deviceInfo);
     const status=el('td');
     if(protocol==='WIFI')status.append(el('span',s.wifi_enabled?'Đã cấp mã Wi-Fi':'Cần kích hoạt Wi-Fi','device-state '+(s.wifi_enabled?'connected':'weak')));
-    else status.append(el('span',s.device_id?(s.ble_online?'BLE đang kết nối':'Chưa thấy tín hiệu BLE'):'Chưa có mã bo','device-state '+(s.ble_online?'connected':'unknown')));
+    else status.append(el('span',s.device_id?(s.ble_online?(s.ble_authorized?'Đã xác thực BLE · ACCEPT':'Đã thấy bo · chưa ACCEPT'):'Chưa thấy tín hiệu BLE'):'Chưa có mã bo','device-state '+(s.ble_online?(s.ble_authorized?'connected':'weak'):'unknown')));
     const controls=el('td'),actions=el('div','','student-actions');
     actions.append(action('Thiết lập',()=>openStudentEditor(s),'secondary'));
     if(protocol==='WIFI'&&!s.wifi_enabled){const activate=action('Tạo token',b=>issueWifiToken(s,b),'primary');activate.disabled=!state.courseId||!s.device_id;activate.title=s.device_id?'Tạo token để dán vào firmware ESP32.':'Lưu mã thiết bị ESP32 trước.';actions.append(activate)}
@@ -252,8 +252,8 @@ function updateDeviceHints(prefix){
   const protocol=$(prefix==='edit'?'editProtocol':'studentProtocol').value;
   const device=$(prefix==='edit'?'editDevice':'device');
   const hint=$(prefix==='edit'?'editDeviceHint':'studentDeviceHint');
-  device.placeholder=protocol==='WIFI'?'VD: ESP32-01':'VD: NRF-...';
-  hint.textContent=protocol==='WIFI'?'ESP32: nhập mã bo (không phải token). Lưu xong chọn “Tạo token” để lấy mã bí mật cho firmware.':'nRF: dùng mã bo gateway nhận qua Bluetooth. Không cần token Wi-Fi.';
+  device.placeholder=protocol==='WIFI'?'VD: ESP32-01':'VD: STUDENT_001 / BLE-001';
+  hint.textContent=protocol==='WIFI'?'ESP32: nhập mã bo (không phải token). Lưu xong chọn “Tạo token” để lấy mã bí mật cho firmware.':'nRF: nhập đúng ID bo gửi (ví dụ BLE-001 hoặc STUDENT_001). LED Connect sáng sau ACCEPT, kể cả trước giờ thi; LED Sent chỉ nháy sau NEXT.';
   if(prefix==='edit'){
     const wifiHint=$('editWifiHint');
     wifiHint.hidden=protocol!=='WIFI';
@@ -331,10 +331,10 @@ async function refreshDevices(){
   const id=state.deviceExam;if(!id||!state.teacher)return;
   const host=document.querySelector('[data-device-exam="'+id+'"]');if(!host)return;
   const data=await request('/exams/'+id+'/devices');if(state.deviceExam!==id||!host.isConnected)return;
-  host.replaceChildren(el('h4','Thiết bị tham gia bài thi'),el('p','Trạng thái lấy từ gateway BLE hoặc trực tiếp từ ESP32 Wi-Fi; nộp đáp án mô phỏng không đồng nghĩa với thiết bị đã kết nối. Mất heartbeat quá 15 giây sẽ hiện “Mất tín hiệu”. Trên điện thoại, vuốt bảng sang ngang để xem đủ thông tin.','field-hint'));
+  host.replaceChildren(el('h4','Thiết bị tham gia bài thi'),el('p','Trạng thái lấy từ gateway BLE hoặc trực tiếp từ ESP32 Wi-Fi. Với bo nRF, LED Connect sáng sau ACCEPT; LED Sent nháy sau NEXT và tắt khi ACK. Mất heartbeat quá 15 giây sẽ hiện “Mất tín hiệu”.','field-hint'));
   const summary=el('div','','device-summary');summary.append(el('span','BLE/USB/Wi-Fi đang kết nối: '+data.connected+'/'+data.total),el('span','Mô phỏng: '+data.simulated));host.append(summary);
   const table=el('table'),head=el('thead'),row=el('tr');for(const text of ['Sinh viên','MSSV','Thiết bị','Giao thức','Nguồn tín hiệu','Kết nối','Ổn định','RSSI','Tín hiệu gần nhất','Câu hiện tại'])row.append(el('th',text));head.append(row);table.append(head);
-  const body=el('tbody');for(const d of data.devices){const tr=el('tr');for(const value of [d.name,d.mssv,d.device_id,d.protocol||d.expected_protocol+' (dự kiến)',d.gateway_id||'—'])tr.append(el('td',value));
+  const body=el('tbody');for(const d of data.devices){const tr=el('tr');const protocol=d.protocol==='BLE'?'nRF52840 · BLE':d.protocol||d.expected_protocol+' (dự kiến)';const authenticated=d.protocol==='BLE'?(d.ble_authorized?' · ACCEPT':' · chưa ACCEPT'):'';for(const value of [d.name,d.mssv,d.device_id,protocol+authenticated,d.gateway_id||'—'])tr.append(el('td',value));
     const status=el('td');status.append(el('span',deviceLabel(d.status),'device-state '+d.status));tr.append(status);
     const quality=el('td');quality.append(el('span',deviceLabel(d.stability),'device-state '+d.stability));tr.append(quality);
     for(const value of [d.rssi===null?'—':d.rssi+' dBm',d.age_seconds===null?'Chưa ghi nhận':d.age_seconds+' giây trước',data.exam.status==='open'?(d.submitted_current?'Đã nộp':'Chưa nộp'):'—'])tr.append(el('td',value));body.append(tr)}

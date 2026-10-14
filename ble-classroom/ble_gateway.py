@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -19,7 +20,40 @@ from bleak.exc import BleakError
 SERVICE_UUID = "6a2f7ad9-2c64-4f13-8a7e-5b5a0a660d6e"
 TX_UUID = "d1484dd8-6d20-4d49-a6f1-4638f9d44c25"  # notify from board
 RX_UUID = "b0f9c817-2d2b-4f28-9ae5-5dd6ca5f5d48"  # write to board
+# The supplied BLE Client sketch encodes these 128-bit UUIDs as little-endian
+# byte arrays and uses one characteristic for both Notify and Write.
+PDF_SERVICE_UUID = "fb349b5f-8000-0080-0010-000000001212"
+PDF_CHARACTERISTIC_UUID = "fb349b5f-8000-0080-0010-000001001212"
 LOG = logging.getLogger("ble-gateway")
+
+
+@dataclass(frozen=True)
+class GattProfile:
+    name: str
+    service_uuid: str
+    notify_uuid: str
+    write_uuid: str
+
+
+SPLIT_PROFILE = GattProfile("split", SERVICE_UUID, TX_UUID, RX_UUID)
+PDF_PROFILE = GattProfile("pdf", PDF_SERVICE_UUID,
+                          PDF_CHARACTERISTIC_UUID, PDF_CHARACTERISTIC_UUID)
+PROFILES = (SPLIT_PROFILE, PDF_PROFILE)
+
+
+def select_profile(services):
+    """Choose only a complete Quiz GATT profile, never a same-named bystander."""
+    for profile in PROFILES:
+        for service in services:
+            if service.uuid.lower() != profile.service_uuid:
+                continue
+            chars = {char.uuid.lower(): char for char in service.characteristics}
+            notify = chars.get(profile.notify_uuid)
+            write = chars.get(profile.write_uuid)
+            if (notify and write and "notify" in notify.properties
+                    and "write" in write.properties):
+                return profile
+    return None
 
 
 class ApiError(Exception):
@@ -64,9 +98,16 @@ class WebApi:
             "connected": connected, "rssi": None,
         })
 
-    async def online(self, device_id, gateway_id, connected):
+    async def authorize(self, device_id):
+        return await asyncio.to_thread(self.request, "/api/gateway/authorize", {
+            "device_id": device_id,
+        })
+
+    async def online(self, device_id, gateway_id, connected, profile=None, authorized=False):
         return await asyncio.to_thread(self.request, "/api/gateway/online", {
-            "device_id": device_id, "gateway_id": gateway_id, "connected": connected,
+            "device_id": device_id, "gateway_id": gateway_id,
+            "connected": connected, "gatt_profile": profile,
+            "authorized": authorized,
         })
 
     async def answer(self, question_id, device_id, choice, sequence):
@@ -77,11 +118,12 @@ class WebApi:
 
 
 class Session:
-    def __init__(self, client, api, address, claimed_ids):
+    def __init__(self, client, api, address, claimed_ids, profile=SPLIT_PROFILE):
         self.client = client
         self.api = api
         self.address = address
         self.claimed_ids = claimed_ids
+        self.profile = profile
         self.gateway_id = "linux-ble-gateway:" + address
         self.queue = asyncio.Queue()
         self.device_id = None
@@ -91,14 +133,15 @@ class Session:
         self.sequence = 0
         self.last_presence = 0.0
         self.last_online = 0.0
-        self.last_reject_question = None
+        self.last_auth_attempt = 0.0
 
     def notification(self, _sender, data):
         message = bytes(data).decode("ascii", "replace").strip()
         self.queue.put_nowait(message)
 
     async def command(self, value):
-        await self.client.write_gatt_char(RX_UUID, value.encode("ascii"), response=True)
+        await self.client.write_gatt_char(self.profile.write_uuid,
+                                          value.encode("ascii"), response=True)
         LOG.info("BLE -> %s", value)
 
     async def handle_message(self, message):
@@ -107,22 +150,48 @@ class Session:
             if not candidate or len(candidate) > 40:
                 await self.command("REJECT")
                 return
-            if candidate == self.device_id:
-                return  # firmware repeats its ID until the exam starts
-            LOG.info("BLE <- %s", message)
+            new_id = candidate != self.device_id
+            if new_id:
+                LOG.info("BLE <- %s", message)
             if self.claimed_ids.get(candidate, self.address) != self.address:
                 LOG.warning("Duplicate device ID %s from %s; rejected", candidate, self.address)
                 await self.command("REJECT")
                 return
-            if self.device_id != candidate:
+            if new_id:
                 if self.device_id and self.claimed_ids.get(self.device_id) == self.address:
                     del self.claimed_ids[self.device_id]
                 self.device_id = candidate
                 self.claimed_ids[candidate] = self.address
                 self.accepted = False
                 self.question_id = None
-                self.last_reject_question = None
                 self.last_online = 0.0
+                self.last_auth_attempt = 0.0
+            now = asyncio.get_running_loop().time()
+            if not new_id and now - self.last_auth_attempt < 3:
+                return  # A rejected board retries ID; avoid flooding the web.
+            self.last_auth_attempt = now
+            try:
+                result = await self.api.authorize(candidate)
+            except ApiError as error:
+                LOG.warning("Cannot authorize %s (HTTP %s): %s", candidate, error.code, error)
+                return  # No false REJECT during a temporary web outage; board retries ID.
+            if result["authorized"]:
+                await self.command("ACCEPT")
+                self.accepted = True
+                LOG.info("Device %s authenticated; waiting for NEXT", candidate)
+            else:
+                await self.command("REJECT")
+                self.accepted = False
+                self.question_id = None
+                LOG.warning("Device %s rejected: %s", candidate, result.get("reason"))
+            try:
+                await self.api.online(self.device_id, self.gateway_id, True,
+                                      self.profile.name, self.accepted)
+                self.last_online = asyncio.get_running_loop().time()
+            except ApiError as error:
+                LOG.warning("Cannot report %s to web (HTTP %s): %s",
+                            candidate, error.code, error)
+                # The normal heartbeat retries; do not undo an already-written ACCEPT.
             return
 
         LOG.info("BLE <- %s", message)
@@ -149,34 +218,41 @@ class Session:
     async def sync_question(self):
         now = asyncio.get_running_loop().time()
         if self.device_id is not None and now - self.last_online >= 5:
-            await self.api.online(self.device_id, self.gateway_id, True)
+            if self.accepted:
+                result = await self.api.authorize(self.device_id)
+                if not result["authorized"]:
+                    await self.command("REJECT")
+                    self.accepted = False
+                    self.question_id = None
+                    LOG.warning("Device %s authorization revoked: %s",
+                                self.device_id, result.get("reason"))
+            await self.api.online(self.device_id, self.gateway_id, True,
+                                  self.profile.name, self.accepted)
             self.last_online = now
         current = await self.api.current()
         if current is None:
-            if self.accepted and self.question_id is not None:
-                await self.command("REJECT")  # end-of-exam also stops blinking
+            if self.question_id is not None:
+                await self.command("DISCONNECT")  # board extinguishes both LEDs
                 self.accepted = False
                 self.question_id = None
             return
         qid = current["question_id"]
-        if self.device_id is None:
+        if self.device_id is None or not self.accepted:
             return
-        if not self.accepted:
-            if self.last_reject_question == qid:
-                return
+        if self.question_id != qid:
             try:
                 await self.api.presence(qid, self.device_id, True)
             except ApiError as error:
                 if error.code == 403:
                     await self.command("REJECT")
-                    self.last_reject_question = qid
+                    self.accepted = False
+                    self.question_id = None
                     LOG.warning("Device %s not in this exam roster", self.device_id)
                     return
+                if error.code == 409:
+                    return  # The question changed while checking the roster.
                 raise
-            await self.command("ACCEPT")
-            self.accepted = True
             self.last_presence = asyncio.get_running_loop().time()
-        if self.question_id != qid:
             await self.command("NEXT")
             self.question_id = qid
             self.answered = False
@@ -192,8 +268,8 @@ class Session:
                 raise
 
     async def run(self):
-        await self.client.start_notify(TX_UUID, self.notification)
-        LOG.info("Notifications enabled; waiting for ID")
+        await self.client.start_notify(self.profile.notify_uuid, self.notification)
+        LOG.info("Notifications enabled (%s GATT); waiting for ID", self.profile.name)
         try:
             while self.client.is_connected:
                 try:
@@ -211,7 +287,8 @@ class Session:
                 del self.claimed_ids[self.device_id]
             if self.device_id:
                 try:
-                    await self.api.online(self.device_id, self.gateway_id, False)
+                    await self.api.online(self.device_id, self.gateway_id, False,
+                                          self.profile.name, False)
                 except ApiError:
                     pass
             if self.accepted and self.question_id is not None and self.device_id:
@@ -225,11 +302,13 @@ async def connect_device(device, api, address, claimed_ids, ready):
     try:
         LOG.info("Connecting to %s (%s)", device.name, address)
         async with BleakClient(device, timeout=15) as client:
-            if not any(service.uuid.lower() == SERVICE_UUID for service in client.services):
-                LOG.warning("Wrong firmware on %s: Quiz service UUID absent", address)
+            profile = select_profile(client.services)
+            if profile is None:
+                LOG.warning("Wrong firmware on %s: supported Quiz GATT profile absent", address)
                 return
+            LOG.info("Quiz GATT profile %s on %s", profile.name, address)
             ready.set()
-            await Session(client, api, address, claimed_ids).run()
+            await Session(client, api, address, claimed_ids, profile).run()
     except (BleakError, OSError, TimeoutError, RuntimeError) as error:
         LOG.warning("BLE connection failed for %s: %s", address, error)
     finally:

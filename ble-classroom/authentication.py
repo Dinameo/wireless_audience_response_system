@@ -236,6 +236,7 @@ def configure_auth(app, database):
         path = request.url.path
         if path.startswith("/api/") and path not in (
             "/api/answers", "/api/gateway/current", "/api/gateway/presence", "/api/gateway/online",
+            "/api/gateway/authorize",
             "/api/device/ping", "/api/device/current", "/api/device/presence", "/api/device/answers"):
             if request.method not in ("GET", "HEAD", "OPTIONS"):
                 origin = request.headers.get("origin")

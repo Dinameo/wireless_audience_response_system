@@ -232,8 +232,22 @@ class BleOnlineIn(BaseModel):
     device_id: str = Field(min_length=1, max_length=40)
     gateway_id: str = Field(min_length=1, max_length=64)
     connected: bool
+    gatt_profile: Literal['split', 'pdf'] | None = None
+    authorized: bool = False
 
     @field_validator('device_id', 'gateway_id')
+    @classmethod
+    def trim(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError('Không được để trống')
+        return value
+
+
+class BleAuthorizeIn(BaseModel):
+    device_id: str = Field(min_length=1, max_length=40)
+
+    @field_validator('device_id')
     @classmethod
     def trim(cls, value):
         value = value.strip()
@@ -322,6 +336,32 @@ def roster(db, exam=None, question=None):
         db.execute('''SELECT s.id,s.mssv,s.name,s.device_id,s.preferred_protocol FROM enrollments en JOIN students s ON s.id=en.student_id
             WHERE en.course_id=%s AND en.active=TRUE ORDER BY s.mssv''', (course_id,))
     return db.fetchall()
+
+
+def ble_authorization(db, device_id):
+    """An ID is accepted before an exam; an open question additionally gates by roster."""
+    db.execute('''SELECT q.id,q.exam_id,c.teacher_id FROM questions q
+        JOIN class_subjects cs ON cs.id=q.course_id JOIN classes c ON c.id=cs.class_id
+        WHERE q.status='open' LIMIT 1''')
+    question = db.fetchone()
+    if question:
+        db.execute("SELECT 1 FROM devices WHERE teacher_id=%s AND device_id=%s AND protocol='BLE' LIMIT 1",
+                   (question['teacher_id'], device_id))
+    else:
+        db.execute("SELECT 1 FROM devices WHERE device_id=%s AND protocol='BLE' LIMIT 1",
+                   (device_id,))
+    if not db.fetchone():
+        return {'authorized': False, 'reason': 'unknown_device'}
+    if question:
+        if question['exam_id'] is not None:
+            db.execute('SELECT 1 FROM exam_students WHERE exam_id=%s AND device_id=%s LIMIT 1',
+                       (question['exam_id'], device_id))
+        else:
+            db.execute('SELECT 1 FROM question_students WHERE question_id=%s AND device_id=%s LIMIT 1',
+                       (question['id'], device_id))
+        if not db.fetchone():
+            return {'authorized': False, 'reason': 'not_in_roster'}
+    return {'authorized': True, 'reason': 'known_device'}
 
 
 def validate_exam_assignments(people, assignments):
@@ -493,6 +533,9 @@ def configure_exam_api(app, database, changed, gateway_key):
                 MAX(d.token_hash IS NOT NULL) AS wifi_enabled,
                 MAX(CASE WHEN bi.connected=TRUE AND bi.last_seen>=UTC_TIMESTAMP(3)-INTERVAL 15 SECOND
                     THEN 1 ELSE 0 END) AS ble_online,
+                MAX(CASE WHEN bi.connected=TRUE AND bi.authorized=TRUE AND bi.last_seen>=UTC_TIMESTAMP(3)-INTERVAL 15 SECOND
+                    THEN 1 ELSE 0 END) AS ble_authorized,
+                MAX(bi.gatt_profile) AS ble_profile,
                 ROUND(SUM(CASE WHEN q.course_id=%s AND e.status='closed'
                     AND a.choice=q.correct_choice THEN q.points ELSE 0 END) /
                     NULLIF((SELECT COUNT(*) FROM exams completed WHERE completed.course_id=%s
@@ -601,6 +644,9 @@ def configure_exam_api(app, database, changed, gateway_key):
                 MAX(d.token_hash IS NOT NULL) AS wifi_enabled,
                 MAX(CASE WHEN bi.connected=TRUE AND bi.last_seen>=UTC_TIMESTAMP(3)-INTERVAL 15 SECOND
                     THEN 1 ELSE 0 END) AS ble_online,
+                MAX(CASE WHEN bi.connected=TRUE AND bi.authorized=TRUE AND bi.last_seen>=UTC_TIMESTAMP(3)-INTERVAL 15 SECOND
+                    THEN 1 ELSE 0 END) AS ble_authorized,
+                MAX(bi.gatt_profile) AS ble_profile,
                 ROUND(SUM(CASE WHEN q.course_id=%s AND e.status='closed'
                     AND a.choice=q.correct_choice THEN q.points ELSE 0 END) /
                     NULLIF((SELECT COUNT(*) FROM exams completed WHERE completed.course_id=%s
@@ -841,7 +887,9 @@ def configure_exam_api(app, database, changed, gateway_key):
                 raise HTTPException(409, 'Chỉ chọn thiết bị trước khi bắt đầu bài thi nháp.')
             people = roster(db, exam=exam)
             db.execute('''SELECT d.device_id,d.protocol,(d.token_hash IS NOT NULL) AS wifi_ready,
-                (bi.connected=TRUE AND bi.last_seen>=UTC_TIMESTAMP(3)-INTERVAL 15 SECOND) AS ble_online
+                (bi.connected=TRUE AND bi.last_seen>=UTC_TIMESTAMP(3)-INTERVAL 15 SECOND) AS ble_online,
+                (bi.connected=TRUE AND bi.authorized=TRUE AND bi.last_seen>=UTC_TIMESTAMP(3)-INTERVAL 15 SECOND) AS ble_authorized,
+                bi.gatt_profile AS ble_profile
                 FROM devices d LEFT JOIN ble_device_inventory bi ON bi.device_id=d.device_id
                 WHERE d.teacher_id=%s ORDER BY d.device_id''', (teacher_id(request),))
             devices = db.fetchall()
@@ -1094,21 +1142,33 @@ def configure_exam_api(app, database, changed, gateway_key):
                 raise HTTPException(409, 'Không có câu hỏi đang mở')
             return question
 
+    @router.post('/gateway/authorize')
+    def gateway_authorize(item: BleAuthorizeIn, x_gateway_key: str | None = Header(default=None)):
+        """Authenticate a known BLE ID immediately; an open quiz also requires roster membership."""
+        gateway(x_gateway_key)
+        with database() as db:
+            return ble_authorization(db, item.device_id)
+
     @router.post('/gateway/online', status_code=202)
     async def gateway_online(item: BleOnlineIn, x_gateway_key: str | None = Header(default=None)):
         gateway(x_gateway_key)
         with database() as db:
-            db.execute('''SELECT connected,gateway_id,
+            db.execute('''SELECT connected,gateway_id,gatt_profile,authorized,
                 last_seen<UTC_TIMESTAMP(3)-INTERVAL 15 SECOND AS stale
                 FROM ble_device_inventory WHERE device_id=%s FOR UPDATE''', (item.device_id,))
             previous = db.fetchone()
             changed_state = (previous is None or bool(previous['connected']) != item.connected
                              or (item.connected and bool(previous['stale']))
-                             or (item.connected and previous['gateway_id'] != item.gateway_id))
-            db.execute('''INSERT INTO ble_device_inventory(device_id,gateway_id,connected,last_seen)
-                VALUES(%s,%s,%s,UTC_TIMESTAMP(3)) ON DUPLICATE KEY UPDATE
-                gateway_id=VALUES(gateway_id),connected=VALUES(connected),last_seen=VALUES(last_seen)''',
-                (item.device_id, item.gateway_id, item.connected))
+                             or (item.connected and previous['gateway_id'] != item.gateway_id)
+                             or (item.connected and bool(previous['authorized']) != item.authorized)
+                             or (item.connected and item.gatt_profile is not None
+                                 and previous['gatt_profile'] != item.gatt_profile))
+            db.execute('''INSERT INTO ble_device_inventory(device_id,gateway_id,connected,last_seen,gatt_profile,authorized)
+                VALUES(%s,%s,%s,UTC_TIMESTAMP(3),%s,%s) ON DUPLICATE KEY UPDATE
+                gateway_id=VALUES(gateway_id),connected=VALUES(connected),last_seen=VALUES(last_seen),
+                gatt_profile=COALESCE(VALUES(gatt_profile),gatt_profile),authorized=VALUES(authorized)''',
+                (item.device_id, item.gateway_id, item.connected,
+                 item.gatt_profile, item.authorized if item.connected else False))
             owners = []
             if changed_state:
                 db.execute('SELECT teacher_id FROM devices WHERE device_id=%s', (item.device_id,))
@@ -1295,7 +1355,7 @@ def configure_exam_api(app, database, changed, gateway_key):
             inventory = {}
             if exam['status'] in ('draft', 'open') and people:
                 placeholders = ','.join(['%s'] * len(people))
-                db.execute(f'''SELECT device_id,gateway_id,connected,
+                db.execute(f'''SELECT device_id,gateway_id,connected,gatt_profile,authorized,
                     TIMESTAMPDIFF(SECOND,last_seen,UTC_TIMESTAMP()) AS age_seconds
                     FROM ble_device_inventory WHERE device_id IN ({placeholders})''',
                     tuple(student['device_id'] for student in people))
@@ -1309,9 +1369,9 @@ def configure_exam_api(app, database, changed, gateway_key):
         devices = []
         for student in people:
             row = presence.get(student['id'])
+            ble_inventory = inventory.get(student['device_id'])
             if row is None and student['device_id'] in inventory:
-                found = inventory[student['device_id']]
-                row = {**found, 'protocol':'BLE', 'rssi':None,
+                row = {**ble_inventory, 'protocol':'BLE', 'rssi':None,
                        'recent_reports':0, 'recent_disconnects':0}
             status = 'unknown'
             stability = 'unknown'
@@ -1330,6 +1390,8 @@ def configure_exam_api(app, database, changed, gateway_key):
             devices.append({**student,'status':status,'stability':stability,
                             'expected_protocol':'WIFI' if student['device_id'] in wifi_devices else 'BLE',
                             'protocol':row['protocol'] if row else None,
+                            'ble_profile':ble_inventory['gatt_profile'] if ble_inventory else None,
+                            'ble_authorized':bool(ble_inventory['authorized']) if ble_inventory else False,
                             'gateway_id':row['gateway_id'] if row else None,
                             'rssi':row['rssi'] if row else None,
                             'age_seconds':max(0,row['age_seconds']) if row and row['age_seconds'] is not None else None,

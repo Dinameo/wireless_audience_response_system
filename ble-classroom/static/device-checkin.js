@@ -29,9 +29,9 @@ window.chooseExamDevices = async function chooseExamDevices(examId) {
   form.method = 'dialog';
   const eyebrow = make('span', 'BƯỚC 1 / 2 · GHÉP THIẾT BỊ', 'checkin-eyebrow');
   const title = make('h2', 'Ai dùng bo nào trong lượt thi này?');
-  const help = make('p', 'Chọn loại bo trước, rồi chọn mã bo. ESP32 cần mã đã kích hoạt Wi-Fi. Token bí mật chỉ dán vào chương trình, không nhập ở đây.', 'checkin-help');
+  const help = make('p', 'Chọn loại bo rồi chọn đúng mã bo gửi qua BLE (ví dụ STUDENT_001). Bo đã đăng ký được ACCEPT trước giờ thi; NEXT chỉ đến khi câu hỏi mở. ESP32 cần mã đã kích hoạt Wi-Fi.', 'checkin-help');
   const summary = make('p', data.students.length + ' sinh viên · ' +
-      onlineBleBoards.length + ' nRF đang kết nối · ' +
+      onlineBleBoards.length + ' nRF gateway đã thấy · ' +
       wifiBoards.length + ' ESP32 đã cấp mã Wi-Fi', 'checkin-status');
   const rosterNote = make('p', 'Lượt thi có ' + data.students.length +
     ' sinh viên. Web chỉ tự chuyển câu khi tất cả đã nộp; nếu thử vài bo, giảng viên bấm “Chuyển câu tiếp theo” trên màn chiếu.', 'checkin-roster-note');
@@ -58,7 +58,7 @@ window.chooseExamDevices = async function chooseExamDevices(examId) {
     manual.type = 'text';
     manual.maxLength = 40;
     manual.autocomplete = 'off';
-    manual.placeholder = 'Nhập ID nRF do gateway nhận';
+    manual.placeholder = 'VD: STUDENT_001 hoặc BLE-001';
     manual.hidden = true;
     deviceLabel.append(device, manual);
     const status = make('p', '', 'checkin-device-status');
@@ -78,7 +78,7 @@ window.chooseExamDevices = async function chooseExamDevices(examId) {
       } else {
         const known = bleBoards.find(board => board.device_id === picked);
         status.textContent = !picked ? 'Chọn bo đang kết nối, hoặc nhập mã nRF khác.' :
-          known?.ble_online ? 'Gateway đang nhận bo này qua BLE.' : 'Chưa thấy tín hiệu BLE; có thể bật bo sau.';
+          known?.ble_online ? 'Gateway đã thấy bo' + (known.ble_authorized ? '; đã gửi ACCEPT, LED Connect phải sáng.' : '; chưa ACCEPT, kiểm tra mã bo đã đăng ký.') : 'Chưa thấy tín hiệu BLE; kiểm tra firmware hoặc bật bo.';
       }
       status.classList.toggle('ready', Boolean(picked && (isWifi ||
         bleBoards.some(board => board.device_id === picked && board.ble_online))));
@@ -89,7 +89,7 @@ window.chooseExamDevices = async function chooseExamDevices(examId) {
       device.replaceChildren();
       addOption(device, isWifi ? 'Chọn ESP32 đã kích hoạt' : 'Chọn mã nRF', '');
       for (const board of boards) addOption(device, board.device_id +
-        (isWifi ? ' · đã cấp token' : board.ble_online ? ' · đang kết nối' : ' · chưa có tín hiệu'), board.device_id);
+        (isWifi ? ' · đã cấp token' : board.ble_online ? (board.ble_authorized ? ' · đã ACCEPT' : ' · chưa ACCEPT') : ' · chưa có tín hiệu'), board.device_id);
       if (!isWifi) {
         if (suggestion && !boards.some(board => board.device_id === suggestion))
           addOption(device, suggestion + ' · mã gợi ý', suggestion);
@@ -142,7 +142,7 @@ window.chooseExamDevices = async function chooseExamDevices(examId) {
       rosterNote.hidden = data.students.length <= 2;
       eyebrow.textContent = 'BƯỚC 1 / 2 · GHÉP THIẾT BỊ';
       title.textContent = 'Ai dùng bo nào trong lượt thi này?';
-      help.textContent = 'Chọn loại bo trước, rồi chọn mã bo. ESP32 cần mã đã kích hoạt Wi-Fi. Token bí mật chỉ dán vào chương trình, không nhập ở đây.';
+      help.textContent = 'Chọn loại bo rồi chọn đúng ID bo gửi qua BLE. LED Connect sáng sau ACCEPT ngay cả trước giờ thi; LED Sent chỉ nháy sau NEXT. ESP32 cần mã đã kích hoạt Wi-Fi.';
       cancel.textContent = 'Hủy';
       confirm.textContent = 'Bước 2 · Xác nhận & bắt đầu';
     };

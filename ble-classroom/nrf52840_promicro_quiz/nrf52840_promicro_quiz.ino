@@ -4,10 +4,11 @@
 #include <nrf_gpio.h>
 
 // nRF52840 Pro Micro / nice!nano-style board with RAW NORDIC pin labels.
-// The nRF52840 factory device ID is different on every chip. Flash the SAME
-// sketch to every board, then copy its printed ID into "Mã thiết bị" on the web.
-// This is an identifier, not a secret or exam authentication credential.
-char deviceId[21] = {};
+// Set a different short ID for EACH physical nRF board: BLE-001, BLE-002, ...
+// The ID must match "Mã thiết bị" on the web. It is not a secret credential.
+// Keep "ID:" + the ID within one 20-byte BLE notification (default MTU 23).
+constexpr char DEVICE_ID[] = "BLE-001";
+static_assert(sizeof(DEVICE_ID) - 1 + 3 <= 20, "Device ID is too long for BLE notification");
 
 // Printed board label 017 means P0.17, 100 means P1.00, etc.
 // These follow the supplied PDF exactly. Do not use Arduino D numbers here.
@@ -39,6 +40,8 @@ char selected = 0;
 bool nextLedOn = false;
 uint32_t lastBlinkMs = 0;
 uint32_t lastIdMs = 0;
+bool disconnectRequested = false;
+uint32_t disconnectRequestedAt = 0;
 bool stablePressed[5] = {};
 bool lastRawPressed[5] = {};
 uint32_t lastChangeMs[5] = {};
@@ -50,7 +53,9 @@ void resetSession(State newState) {
   state = newState;
   selected = 0;
   nextLedOn = false;
-  setConnect(connectionHandle != BLE_CONN_HANDLE_INVALID);
+  // Per the hardware flow, BLE link alone is not acceptance into the exam.
+  // CONNECT lights only after the server writes ACCEPT.
+  setConnect(false);
   setNext(false);
 }
 
@@ -65,6 +70,7 @@ void onDisconnect(uint16_t connHandle, uint8_t reason) {
   (void) connHandle;
   (void) reason;
   connectionHandle = BLE_CONN_HANDLE_INVALID;
+  disconnectRequested = false;
   resetSession(State::DISCONNECTED);
   Serial.println("BLE disconnected; advertising again");
 }
@@ -79,6 +85,7 @@ void onWrite(uint16_t connHandle, BLECharacteristic *characteristic,
 
   if (strcmp(cmd, "ACCEPT") == 0 && state == State::WAIT_ACCEPT) {
     state = State::READY;
+    setConnect(true);
   } else if (strcmp(cmd, "REJECT") == 0) {
     resetSession(State::WAIT_ACCEPT);
   } else if (strcmp(cmd, "NEXT") == 0 &&
@@ -94,7 +101,9 @@ void onWrite(uint16_t connHandle, BLECharacteristic *characteristic,
     nextLedOn = false;
     setNext(false);
   } else if (strcmp(cmd, "DISCONNECT") == 0) {
-    Bluefruit.disconnect(connHandle);
+    // Leave time for the GATT Write response before disconnecting.
+    disconnectRequested = true;
+    disconnectRequestedAt = millis();
   }
 }
 
@@ -131,10 +140,7 @@ void press(uint8_t index) {
 
 void setup() {
   Serial.begin(115200);
-  snprintf(deviceId, sizeof(deviceId), "NRF-%08lX%08lX",
-           static_cast<unsigned long>(NRF_FICR->DEVICEID[1]),
-           static_cast<unsigned long>(NRF_FICR->DEVICEID[0]));
-  Serial.print("Device ID: "); Serial.println(deviceId);
+  Serial.print("Device ID: "); Serial.println(DEVICE_ID);
   nrf_gpio_cfg_output(LED_CONNECT);
   nrf_gpio_cfg_output(LED_NEXT);
   resetSession(State::DISCONNECTED);
@@ -171,10 +177,15 @@ void setup() {
 
 void loop() {
   const uint32_t now = millis();
+  if (disconnectRequested && now - disconnectRequestedAt >= 50) {
+    disconnectRequested = false;
+    if (connectionHandle != BLE_CONN_HANDLE_INVALID)
+      Bluefruit.disconnect(connectionHandle);
+  }
   if (state == State::WAIT_ACCEPT && connectionHandle != BLE_CONN_HANDLE_INVALID &&
       txChar.notifyEnabled(connectionHandle) && (lastIdMs == 0 || now - lastIdMs >= 1000)) {
-    char message[44];
-    snprintf(message, sizeof(message), "ID:%s", deviceId);
+    char message[21];
+    snprintf(message, sizeof(message), "ID:%s", DEVICE_ID);
     if (txChar.notify(connectionHandle, message)) {
       lastIdMs = now;
       Serial.print("TX: "); Serial.println(message);

@@ -122,7 +122,9 @@ Script chỉ chạy khi ba bảng MySQL đều trống và đã có đúng một
 
 ## Giao thức tích hợp nRF52840
 
-Thiết bị nRF52840 là BLE peripheral. Firmware giữ lựa chọn A/B/C/D cục bộ và **chỉ phát khi nhấn Submit**. Cùng một sketch có thể nạp cho nhiều bo: mỗi bo tạo mã `NRF-...` riêng từ ID chip. Giảng viên chọn mã bo cho sinh viên ở bước trước khi bắt đầu từng bài thi. Gateway Linux là BLE central: kết nối riêng với từng bo, nhận `ID:NRF-...` và `ANS:A`/`B`/`C`/`D`, gắn ID câu hỏi đang mở cùng sequence rồi gọi:
+Thiết bị nRF52840 là BLE peripheral. Firmware giữ lựa chọn A/B/C/D cục bộ và **chỉ phát khi nhấn Submit**. Sketch theo PDF mặc định dùng `STUDENT_001` trong `CLIENT_ID`; sketch GATT cũ dùng `BLE-001` trong `DEVICE_ID`. **Mỗi bo khác phải đổi sang mã riêng** trước khi nạp. Giảng viên đăng ký mã bo cho sinh viên, rồi xác nhận lại ở bước trước khi bắt đầu từng bài thi. Gateway Linux là BLE central: kết nối riêng với từng bo, nhận `ID:...` và `ANS:A`/`B`/`C`/`D`, gắn ID câu hỏi đang mở cùng sequence rồi gọi:
+
+Gateway cũng nhận [sketch theo PDF](nrf52840_pdf_quiz/nrf52840_pdf_quiz.ino) **BLE_Client_luong_hoat_dong_va_phan_cung.pdf** đã gửi: service `fb349b5f-8000-0080-0010-000000001212`, một characteristic Notify + Write `fb349b5f-8000-0080-0010-000001001212`. [Sketch project cũ](nrf52840_promicro_quiz/nrf52840_promicro_quiz.ino) dùng service `6a2f7ad9-2c64-4f13-8a7e-5b5a0a660d6e` với hai characteristic riêng. Gateway tự nhận dạng kiểu GATT sau khi kết nối. `STUDENT_001` trong PDF là **mã bo ví dụ**: nếu giữ nguyên sketch, nhập đúng `STUDENT_001` trên web; nếu đổi `CLIENT_ID` thành `BLE-001`, nhập `BLE-001`. Một mã chỉ được giao cho một bo đang hoạt động trong cùng thời điểm. Sau khi nhận `ID`, gateway xác thực mã bo đã đăng ký và gửi `ACCEPT` hoặc `REJECT` ngay; LED CONNECT có thể sáng **trước giờ thi**. Khi bài thi mở, gateway chỉ gửi `NEXT` cho bo thuộc danh sách tham gia. `NEXT` làm LED SENT/NEXT nháy 250 ms bật + 250 ms tắt; `ACK` sau khi lưu đáp án mới tắt LED. Kết thúc bài, gateway gửi `DISCONNECT`; `REJECT` hoặc ngắt BLE tắt LED CONNECT. Web hiển thị kiểu GATT và trạng thái `ACCEPT` của bo.
 
 ```http
 POST /api/answers
@@ -146,7 +148,7 @@ Gateway thật cần gửi sự kiện kết nối/heartbeat/ngắt kết nối 
 {"question_id":42,"device_id":"BTN-01","protocol":"BLE","gateway_id":"pi-gateway-1","connected":true,"rssi":-67}
 ```
 
-Gateway nRF52840 hiện gửi heartbeat cho từng bo khoảng 5 giây/lần, kèm ID câu hỏi đang mở. Bản tin của câu đã đóng bị từ chối. Quá 15 giây không có tín hiệu sẽ hiện **Mất tín hiệu**. Trường RSSI của gateway BLE hiện chưa có số đo thật nên bảng chỉ có thể đánh giá trạng thái kết nối, chưa thể khẳng định chất lượng sóng là **Ổn định**. Không có bản tin gateway thì luôn hiện **Chưa có tín hiệu**; chỉ nộp đáp án mô phỏng không làm trạng thái BLE thành “đã kết nối”. Dùng `python3 simulate_device.py BTN-01` để thử trạng thái **Mô phỏng** riêng biệt, `--disconnect` để thử ngắt; bản mô phỏng tự hết hiệu lực sau 15 giây.
+Gateway nRF52840 hiện gửi heartbeat cho từng bo khoảng 5 giây/lần, kèm ID câu hỏi đang mở. Bản tin của câu đã đóng bị từ chối. Quá 15 giây không có tín hiệu sẽ hiện **Mất tín hiệu**. `ble_device_inventory.gatt_profile` lưu `pdf` hoặc `split`, còn `authorized` lưu kết quả xác thực gần nhất để web hiển thị kiểu GATT và `ACCEPT`; migration tự thêm các cột khi web khởi động. Trường RSSI của gateway BLE hiện chưa có số đo thật nên bảng chỉ có thể đánh giá trạng thái kết nối, chưa thể khẳng định chất lượng sóng là **Ổn định**. Không có bản tin gateway thì luôn hiện **Chưa có tín hiệu**; chỉ nộp đáp án mô phỏng không làm trạng thái BLE thành “đã kết nối”. Dùng `python3 simulate_device.py BTN-01` để thử trạng thái **Mô phỏng** riêng biệt, `--disconnect` để thử ngắt; bản mô phỏng tự hết hiệu lực sau 15 giây.
 
 ### ESP32 qua Wi-Fi (không cần gateway BLE)
 
