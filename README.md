@@ -1,6 +1,12 @@
 # Hệ thống trắc nghiệm tương tác sử dụng BLE và Wi-Fi
 
-Đây là hệ thống trả lời trắc nghiệm trong lớp học. Giảng viên quản lý lớp, sinh viên và đề thi trên web; người học trả lời bằng thiết bị năm nút. Server xác thực thiết bị theo từng lượt thi, lưu đáp án vào MySQL, chấm điểm và cung cấp kết quả để xem hoặc xuất Excel.
+## Giới thiệu dự án
+
+Dự án xây dựng hệ thống trắc nghiệm tương tác hỗ trợ tổ chức và theo dõi bài kiểm tra trong lớp học. Thay vì trả lời trực tiếp trên điện thoại hoặc máy tính, sinh viên có thể sử dụng thiết bị IoT với các nút A/B/C/D và SUBMIT để chọn rồi gửi đáp án. Giảng viên quản lý lớp học, danh sách sinh viên, câu hỏi và lượt thi trên giao diện web.
+
+Hệ thống kết nối thiết bị theo hai cách: bo nRF52840 gửi dữ liệu BLE qua gateway chạy trên máy tính; bo ESP32 kết nối Wi-Fi và gửi dữ liệu đến API. Backend FastAPI xác thực thiết bị, tiếp nhận đáp án, lưu dữ liệu vào MySQL và cập nhật trạng thái bài thi để giảng viên theo dõi. Sau khi kết thúc, giảng viên có thể xem kết quả, thống kê và xuất bảng điểm.
+
+Mục tiêu của dự án là kết hợp phần cứng IoT, giao tiếp không dây và phần mềm quản lý thành một quy trình trả lời trắc nghiệm liền mạch: từ tạo bài thi, ghép thiết bị với sinh viên, mở câu hỏi, nhận đáp án đến tổng hợp kết quả.
 
 ## Thành viên
 
