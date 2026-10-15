@@ -1,55 +1,45 @@
 # Luồng hoạt động firmware nRF52840
 
-Tài liệu này mô tả [`main.ino`](main.ino), firmware thiết bị trả lời trắc nghiệm BLE.
+Firmware hiện nằm tại [main/main.ino](main/main.ino). Tài liệu này tóm tắt các trạng thái và lệnh BLE chính.
 
-## Khởi tạo
+## Khởi tạo và quảng bá
 
-Trong `setup()`, chương trình:
+Trong setup(), chương trình khởi tạo Serial ở 115200 baud, cấu hình LED và năm nút nhấn active-low với pull-up nội, tạo BLE service/characteristic rồi quảng bá thiết bị với tên BLE_QUIZ_CLIENT. Các chân P1.00–P1.15 trong bảng chân được ánh xạ từ 100–115 sang GPIO Nordic 32–47.
 
-1. Khởi động Serial ở 115200 baud để ghi log.
-2. Cấu hình LED kết nối (`LED_CONNECT`, P0.11), LED trạng thái gửi (`LED_SENT`, P1.04) và năm nút nhấn A/B/C/D/SUBMIT. Nút được đọc theo mức thấp (active-low), không bật điện trở kéo nội nên mạch cần có điện trở phân cực ngoài.
-3. Chuyển mã chân theo bảng phần cứng sang số GPIO Nordic tại nơi gọi API: các chân P1.00–P1.15 được ánh xạ từ `100–115` sang `32–47`.
-4. Khởi tạo Bluefruit ở vai trò Peripheral, tạo BLE service và characteristic.
-5. Bật quảng bá BLE với tên `BLE_QUIZ_CLIENT`; sau khi mất kết nối, thiết bị tự quảng bá lại.
-
-Characteristic vừa nhận lệnh ghi từ gateway (write), vừa phát thông báo từ thiết bị (notify). UUID trong firmware dùng service `12120000-0000-1000-8000-00805f9b34fb` và characteristic `12120001-0000-1000-8000-00805f9b34fb`.
+Characteristic BLE vừa nhận lệnh ghi từ gateway (write), vừa gửi dữ liệu thiết bị lên gateway (notify). Service UUID là 12120000-0000-1000-8000-00805f9b34fb; characteristic UUID là 12120001-0000-1000-8000-00805f9b34fb.
 
 ## Kết nối và xác thực
 
-Khi có kết nối, callback đặt lại trạng thái của phiên và chờ gateway bật notify. Sau khi notify được bật, vòng `loop()` gửi `ID:STUDENT_001` đúng một lần. Hãy đổi `CLIENT_ID` trong mã thành mã thiết bị đã đăng ký ở hệ thống trước khi nạp firmware.
+Khi gateway kết nối và bật notify, thiết bị gửi ID:STUDENT_001 một lần. Đổi CLIENT_ID trong firmware thành mã thiết bị đã đăng ký.
 
-Gateway phản hồi bằng một lệnh ghi:
-
-- `ACCEPT`: đánh dấu thiết bị đã xác thực, bật LED kết nối và chờ `NEXT`.
-- `REJECT`: hủy trạng thái xác thực, tắt LED kết nối và không nhận câu trả lời.
+- ACCEPT: đánh dấu đã xác thực, bật LED kết nối và chờ câu hỏi mới.
+- REJECT: hủy trạng thái xác thực, tắt LED kết nối và không nhận đáp án.
 
 ## Một lượt trả lời
 
-1. Gateway gửi `NEXT`. Firmware mở lượt mới, xóa lựa chọn cũ và làm LED gửi nhấp nháy theo chu kỳ 250 ms bật / 250 ms tắt.
-2. Khi lượt đang mở và thiết bị đã xác thực, `checkButtons()` đọc các nút. Nhấn A/B/C/D chỉ lưu lựa chọn hiện tại; người dùng có thể nhấn nút đáp án khác để đổi lựa chọn.
-3. Nhấn `SUBMIT` khi đã chọn sẽ phát `ANS:A`, `ANS:B`, `ANS:C` hoặc `ANS:D` qua notify. Nếu chưa chọn, firmware chỉ ghi log và không gửi.
-4. Khi gửi thành công, firmware chuyển sang chờ ACK và khóa việc gửi lại trong lượt đó.
-5. Gateway gửi `ACK` để kết thúc trạng thái chờ, tắt LED gửi. Lệnh `NEXT` tiếp theo sẽ mở lượt trả lời kế tiếp.
+1. Gateway gửi NEXT; thiết bị xóa lựa chọn trước, mở lượt mới và sáng liên tục trong lượt (nháy LED đã tắt).
+2. Người dùng nhấn A/B/C/D để chọn đáp án. Có thể đổi lựa chọn trước khi gửi.
+3. Nhấn SUBMIT để gửi ANS:A, ANS:B, ANS:C hoặc ANS:D. Nếu chưa chọn đáp án, thiết bị chỉ ghi log.
+4. Gửi thành công thì thiết bị chờ ACK và khóa gửi lại trong lượt đó.
+5. Gateway gửi ACK để kết thúc trạng thái chờ; NEXT tiếp theo mở lượt mới.
 
-Nếu notify gửi đáp án thất bại, firmware ghi log và cho phép nhấn `SUBMIT` lại. Các nút chỉ được xử lý trong trạng thái đã xác thực, đang có câu hỏi và chưa chờ ACK.
+Nếu gửi notify thất bại, thiết bị ghi log và cho phép nhấn SUBMIT lại. Nút chỉ được xử lý khi thiết bị đã xác thực, câu hỏi đang mở và không chờ ACK.
 
-## Ngắt kết nối và LED
+## LED và ngắt kết nối
 
-- `LED_CONNECT` sáng sau khi nhận `ACCEPT`; tắt khi bị từ chối, ngắt kết nối hoặc nhận yêu cầu `DISCONNECT`.
-- `LED_SENT` nhấp nháy khi có câu hỏi mới (`NEXT`) và tắt sau `ACK` hoặc khi phiên bị đặt lại.
-- `DISCONNECT` yêu cầu thiết bị ngắt BLE. Khi callback ngắt kết nối chạy, các cờ và lựa chọn được xóa, rồi quảng bá tự khởi động lại.
-
-## Sơ đồ thông điệp
+- LED kết nối bật sau ACCEPT; tắt khi REJECT, ngắt kết nối hoặc nhận DISCONNECT.
+- LED gửi sáng liên tục sau NEXT, tắt sau ACK hoặc khi phiên được đặt lại.
+- Khi ngắt kết nối, firmware xóa trạng thái và quảng bá lại.
 
 ```text
 Gateway                         nRF52840
    | ---- kết nối + bật notify ----> |
    | <---------- ID:... ------------ |
    | -------- ACCEPT / REJECT -----> |
-   | ----------- NEXT -------------> |  Mở lượt, cho chọn đáp án
-   | <---------- ANS:A ------------- |  Khi nhấn SUBMIT
-   | ------------ ACK -------------> |  Kết thúc lượt chờ
-   | ----------- NEXT -------------> |  Mở lượt kế tiếp
+   | ----------- NEXT -------------> |
+   | <---------- ANS:A ------------- |  Sau khi nhấn SUBMIT
+   | ------------ ACK -------------> |
+   | ----------- NEXT -------------> |
 ```
 
-`DISCONNECT` có thể được gateway gửi để kết thúc phiên. Dữ liệu BLE ở trên là chuỗi UTF-8 ngắn, không phải HTTP/API trực tiếp tới website; gateway chịu trách nhiệm chuyển tiếp dữ liệu lên dịch vụ web.
+Các chuỗi trên là dữ liệu BLE; thiết bị không gọi trực tiếp HTTP/API của website. Gateway chịu trách nhiệm chuyển tiếp dữ liệu lên dịch vụ web.
